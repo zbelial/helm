@@ -4891,6 +4891,8 @@ Unlike `while-no-input' this macro ensure to not returns `t'."
          (let ((throw-on-input ',catch-sym)
                val)
            (setq val (progn ,@body))
+           ;; suggestion from https://github.com/ema2159/centaur-tabs/issues/110
+           (redisplay)
            ;; See comments in `while-no-input' about resetting
            ;; quit-flag.
            (cond ((eq quit-flag throw-on-input)
