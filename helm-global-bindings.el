@@ -30,17 +30,19 @@
 (defcustom helm-command-prefix-key
   (helm-aif (car (where-is-internal 'Control-X-prefix (list global-map)))
       (concat it [?c]))
-  "The key `helm-command-prefix' is bound to in the global map."
+  "The prefix key used to call Helm commands from the `global-map'.
+
+Its default value is `C-x c'.
+This key is bound to the function `helm-command-prefix' in the global map.
+The definition of `helm-command-prefix' is the keymap `helm-command-map'.
+Using `setq' to modify this variable will have no effect."
   :type '(choice (string :tag "Key") (const :tag "no binding"))
-  :group 'helm-global-bindings
   :set
   (lambda (var key)
-    (when (and (boundp var) (symbol-value var))
-      (define-key (current-global-map)
-          (read-kbd-macro (symbol-value var)) nil))
+    (helm-aif (and (boundp var) (symbol-value var))
+        (global-unset-key (read-kbd-macro it)))
     (when key
-      (define-key (current-global-map)
-          (read-kbd-macro key) 'helm-command-prefix))
+      (global-set-key (read-kbd-macro key) 'helm-command-prefix))
     (set var key)))
 
 (defvar helm-command-map
@@ -48,6 +50,7 @@
     (define-key map (kbd "a")         'helm-apropos)
     (define-key map (kbd "e")         'helm-etags-select)
     (define-key map (kbd "l")         'helm-locate)
+    (define-key map (kbd "L")         'helm-locate-library)
     (define-key map (kbd "s")         'helm-surfraw)
     (define-key map (kbd "r")         'helm-regexp)
     (define-key map (kbd "m")         'helm-man-woman)
@@ -81,8 +84,11 @@
     (define-key map (kbd "C-c C-x")   'helm-run-external-command)
     (define-key map (kbd "b")         'helm-resume)
     (define-key map (kbd "M-g i")     'helm-gid)
-    (define-key map (kbd "@")         'helm-list-elisp-packages)
-    map))
+    (define-key map (kbd "@")         'helm-packages)
+    (define-key map (kbd "h p")       'helm-finder)
+    map)
+  "Default keymap for \\[helm-command-prefix] commands.
+The normal global definition of the character \\[helm-command-prefix] indirects to this keymap.")
 
 (fset 'helm-command-prefix helm-command-map)
 

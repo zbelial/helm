@@ -95,14 +95,25 @@ string."
 (defcustom helm-imenu-hide-item-type-name nil
   "Hide display name of imenu item type along with the icon when non nil.
 
-This value can be toggled with \\<helm-imenu-map>\\[helm-imenu-toggle-type-view]."
+This value can be toggled with \\<helm-imenu-map>\\[helm-imenu-toggle-type-view].
+Don't use `setq' to set this."
   :group 'helm-imenu
-  :type 'boolean)
+  :type 'boolean
+  :set (lambda (var val)
+         (if (require 'all-the-icons nil t)
+             (set var val)
+           (set var nil))))
 
 (defcustom helm-imenu-use-icon nil
-  "Display an icon from all-the-icons package when non nil."
+  "Display an icon from all-the-icons package when non nil.
+
+Don't use `setq' to set this."
   :group 'helm-imenu
-  :type 'boolean)
+  :type 'boolean
+  :set (lambda (var val)
+         (if (require 'all-the-icons nil t)
+             (set var val)
+           (set var nil))))
 
 (defcustom helm-imenu-icon-type-alist
   '(("Array"           . (all-the-icons-material "crop" :face font-lock-builtin-face))
@@ -230,7 +241,7 @@ The sexp should be an `all-the-icons' function with its args."
   (with-helm-window
     (let* ((fn (lambda ()
                  (let ((str (buffer-substring
-                             (point-at-bol) (point-at-eol))))
+                             (pos-bol) (pos-eol))))
                    (if helm-imenu-hide-item-type-name
                        (get-text-property 1 'type-name str)
                    (car (split-string str helm-imenu-delimiter))))))
@@ -300,7 +311,7 @@ The sexp should be an `all-the-icons' function with its args."
   (let ((cur (helm-get-selection))
         (mb (with-helm-current-buffer
               (save-excursion
-                (goto-char (point-at-bol))
+                (goto-char (pos-bol))
                  (point-marker)))))
     ;; Happen when cursor is on the line where a definition is. This
     ;; prevent jumping to the definition where we are already, instead
@@ -309,7 +320,8 @@ The sexp should be an `all-the-icons' function with its args."
     (if (equal (cdr cur) mb)
         (prog1 nil
           (helm-set-pattern "")
-          (helm-force-update))
+          (helm-force-update
+           (concat "\\_<" (regexp-quote (car cur)) "\\_>")))
         t)))
 
 (defun helm-imenu-quit-and-find-file-fn (source)
@@ -395,12 +407,11 @@ The sexp should be an `all-the-icons' function with its args."
                    (and (cdr elm)
                         ;; Semantic uses overlays whereas imenu uses
                         ;; markers (Bug#1706).
-                        (setcdr elm (pcase (cdr elm) ; Same as [1].
-                                      ((and ov (pred overlayp))
-                                       (copy-overlay ov))
-                                      ((and mk (or (pred markerp)
-                                                   (pred integerp)))
-                                       (copy-marker mk))))
+                        (setcdr elm (helm-acase (cdr elm) ; Same as [1].
+                                      ((guard (overlayp it))
+                                       (copy-overlay it))
+                                      ((guard (or (markerp it) (integerp it)))
+                                       (copy-marker it))))
                         (list elm))))))
 
 (defun helm-imenu--get-prop (item)
@@ -420,7 +431,6 @@ The sexp should be an `all-the-icons' function with its args."
   "Return an icon for type TYPE.
 The icon is found in `helm-imenu-icon-type-alist', if not
 `helm-imenu-default-type-sexp' is evaled to provide a default icon."
-  (require 'all-the-icons)
   (let ((all-the-icons-scale-factor 1.0)
         (all-the-icons-default-adjust 0.0))
     (or (helm-aand (assoc-default
@@ -433,10 +443,9 @@ The icon is found in `helm-imenu-icon-type-alist', if not
   (cl-loop for (k . v) in candidates
            ;; (k . v) == (symbol-name . marker)
            for bufname = (buffer-name
-                          (pcase v
-                            ((pred overlayp) (overlay-buffer v))
-                            ((or (pred markerp) (pred integerp))
-                             (marker-buffer v))))
+                          (helm-acase v
+                            ((guard (overlayp it)) (overlay-buffer it))
+                            ((guard (markerp it)) (marker-buffer it))))
            for types = (or (helm-imenu--get-prop k)
                            (list (if (with-current-buffer bufname
                                        (derived-mode-p 'prog-mode))

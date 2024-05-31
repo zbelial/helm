@@ -41,20 +41,20 @@
   "Top command used to display output of top.
 A format string where %s will be replaced with `frame-width'.
 
-To use 'top' command, a version supporting batch mode (-b option)
-is needed. On Mac OSX 'top' command doesn't support this, so the
-'ps' command is used instead by default.
+To use top command, a version supporting batch mode (-b option)
+is needed. On Mac OSX top command doesn't support this, so the
+ps command is used instead by default.
 
-Normally 'top' command output have 12 columns, but in some
+Normally top command output have 12 columns, but in some
 versions you may have less than this, so you can either customize
-'top' to use 12 columns with the interactives 'f' and 'W' commands
-of 'top', or modify `helm-top-sort-columns-alist' to fit with the
-number of columns your 'top' command is using.
+top to use 12 columns with the interactives f and W commands
+of top, or modify `helm-top-sort-columns-alist' to fit with the
+number of columns your top command is using.
 
-If you modify 'ps' command be sure that 'pid' comes in first and
+If you modify ps command be sure that pid comes in first and
 \"env COLUMNS=%s\" is specified at beginning of command. Ensure
 also that no elements contain spaces (e.g., use start_time and
-not start). Same as for 'top': you can customize
+not start). Same as for top: you can customize
 `helm-top-sort-columns-alist' to make sort commands working
 properly according to your settings."
   :group 'helm-sys
@@ -208,13 +208,12 @@ Return empty string for non--valid candidates."
                            (cons helm-top--line lst))))
 
 (defun helm-top--skip-top-line ()
-  (let* ((src (helm-get-current-source))
-         (src-name (assoc-default 'name src)))
-    (helm-aif (and (stringp src-name)
-                   (string= src-name "Top")
-                   (helm-get-selection nil t src))
-        (when (string-match-p "^ *PID" it)
-          (helm-next-line)))))
+  (let ((src (helm-get-current-source)))
+    (when (helm-aand (assoc-default 'name src)
+                     (string= it "Top")
+                     (helm-get-selection nil t src)
+                     (string-match-p "^ *PID" it))
+      (helm-next-line))))
 
 (defun helm-top-action-transformer (actions _candidate)
   "Action transformer for `top'.
@@ -440,9 +439,11 @@ Show actions only on line starting by a PID."
 
 
 ;;;###autoload
-(defun helm-top ()
-  "Preconfigured `helm' for top command."
-  (interactive)
+(defun helm-top (&optional arg)
+  "Preconfigured `helm' for top command.
+When prefix arg ARG is non nil toggle auto updating mode `helm-top-poll-mode'."
+  (interactive "P")
+  (when arg (helm-top-poll-mode 'toggle))
   (add-hook 'helm-after-update-hook 'helm-top--skip-top-line)
   (unwind-protect
        (helm :sources 'helm-source-top

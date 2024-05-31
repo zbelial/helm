@@ -24,7 +24,8 @@
 (require 'helm-elisp)
 
 (declare-function undo-tree-restore-state-from-register "ext:undo-tree.el" (register))
-
+(declare-function kmacro--keys "kmacro.el")
+(declare-function frameset-register-p "frameset")
 
 (defgroup helm-ring nil
   "Ring related Applications and libraries for Helm."
@@ -291,12 +292,14 @@ yanked string."
     (helm-aif (marker-buffer candidate)
         (progn
           (switch-to-buffer it)
-          (helm-log-run-hook "helm-mark-ring-default-action" 'helm-goto-line-before-hook)
-          (helm-match-line-cleanup)
-          (with-helm-current-buffer
-            (unless helm-yank-point (setq helm-yank-point (point))))
-          (helm-goto-char target)
-          (helm-highlight-current-line))
+          (with-selected-window (get-buffer-window it)
+            (unless helm-in-persistent-action
+              (helm-log-run-hook
+               "helm-mark-ring-default-action" 'helm-goto-line-before-hook))
+            (helm-match-line-cleanup)
+            (unless helm-yank-point (setq helm-yank-point (point)))
+            (helm-goto-char target)
+            (helm-highlight-current-line)))
       ;; marker points to no buffer, no need to dereference it, just
       ;; delete it.
       (setq mark-ring (delete target mark-ring))
@@ -321,11 +324,11 @@ yanked string."
   (with-current-buffer (marker-buffer marker)
     (goto-char marker)
     (forward-line 0)
-    (let ((line (pcase (thing-at-point 'line)
-                  ((and line (pred stringp)
-                        (guard (not (string-match-p "\\`\n?\\'" line))))
-                   (car (split-string line "[\n\r]")))
-                  (_ "<EMPTY LINE>"))))
+    (let ((line (helm-acase (thing-at-point 'line)
+                  ((guard (and (stringp it)
+                               (not (string-match-p "\\`\n?\\'" it))))
+                   (car (split-string it "[\n\r]")))
+                  (t "<EMPTY LINE>"))))
       (remove-text-properties 0 (length line) '(read-only) line)
       (format "%7d:%s:    %s"
               (line-number-at-pos) (marker-buffer marker) line))))
@@ -362,6 +365,7 @@ yanked string."
 
 (defun helm-register-candidates ()
   "Collecting register contents and appropriate commands."
+  (require 'frameset)
   (cl-loop for (char . rval) in register-alist
         for key    = (single-key-description char)
         for e27 = (registerv-p rval)
@@ -386,7 +390,8 @@ yanked string."
                      'jump-to-register
                      'insert-register))))
           ((and (consp val) (window-configuration-p (car val)))
-           (list "window configuration."
+           (list (if (fboundp 'describe-register-1)
+                     (describe-register-1 char) "window configuration.")
                  'jump-to-register))
           ((and (vectorp val)
                 (fboundp 'undo-tree-register-data-p)
@@ -395,11 +400,19 @@ yanked string."
             "Undo-tree entry."
             'undo-tree-restore-state-from-register))
           ((or (and (vectorp val) (eq 'registerv (aref val 0)))
-               (and (consp val) (frame-configuration-p (car val))))
-           (list "frame configuration."
+               (and (consp val) (frame-configuration-p (car val)))
+               (or (frame-configuration-p val)
+                   (frameset-register-p val)))
+           (list (if (fboundp 'describe-register-1)
+                     (describe-register-1 char) "Frame configuration")
                  'jump-to-register))
           ((and (consp val) (eq (car val) 'file))
            (list (concat "file:"
+                         (prin1-to-string (cdr val))
+                         ".")
+                 'jump-to-register))
+          ((and (consp val) (eq (car val) 'buffer))
+           (list (concat "buffer:"
                          (prin1-to-string (cdr val))
                          ".")
                  'jump-to-register))
@@ -528,16 +541,23 @@ See (info \"(emacs) Keyboard Macros\") for detailed infos."
     (helm :sources
           (helm-build-sync-source "Kmacro"
             :candidates (lambda ()
-                          (helm-fast-remove-dups
-                           (cons (kmacro-ring-head)
-                                 kmacro-ring)
-                           :test 'equal))
+                          (delq nil
+                                (helm-fast-remove-dups
+                                 (cons (kmacro-ring-head)
+                                       kmacro-ring)
+                                 :test 'equal)))
+            
             :multiline t
             :candidate-transformer
             (lambda (candidates)
-              (cl-loop for c in candidates collect
-                       (propertize (help-key-description (car c) nil)
-                                   'helm-realvalue c)))
+              (cl-loop for c in candidates
+                       for keys = (if (functionp c)
+                                      ;; Emacs-29+ (Oclosure).
+                                      (kmacro--keys c)
+                                    ;; Emacs-28 and below (list).
+                                    (car c))
+                       collect (propertize (help-key-description keys nil)
+                                           'helm-realvalue c)))
             :persistent-action 'ignore
             :persistent-help "Do nothing"
             :help-message 'helm-kmacro-help-message
@@ -596,22 +616,22 @@ See (info \"(emacs) Keyboard Macros\") for detailed infos."
     (when (cdr mkd)
       (kmacro-push-ring)
       (setq last-kbd-macro
-            (mapconcat 'identity
-                       (cl-loop for km in mkd
-                                if (vectorp km)
-                                append (cl-loop for k across km collect
-                                                (key-description (vector k)))
-                                into result
-                                else collect (car km) into result
-                                finally return result)
-                       "")))))
+            (cl-loop for km in mkd
+                     for keys = (if (functionp km)
+                                    (kmacro--keys km)
+                                  (helm-acase (car km)
+                                    ((guard (vectorp it)) it)
+                                    ((guard (stringp it))
+                                     (kmacro--to-vector it))))
+                     vconcat keys)))))
 
 (defun helm-kbd-macro-delete-macro (_candidate)
-  (let ((mkd (helm-marked-candidates)))
-    (kmacro-push-ring)
+  (let ((mkd  (helm-marked-candidates))
+        (head (kmacro-ring-head)))
     (cl-loop for km in mkd
              do (setq kmacro-ring (delete km kmacro-ring)))
-    (kmacro-pop-ring1)))
+    (when (member head mkd)
+      (kmacro-delete-ring-head))))
 
 (defun helm-kbd-macro-edit-macro (candidate)
   (kmacro-push-ring)

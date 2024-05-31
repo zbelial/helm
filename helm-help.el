@@ -44,7 +44,6 @@
                                  helm-buffers-ido-virtual-help-message
                                  helm-moccur-help-message
                                  helm-top-help-message
-                                 helm-el-package-help-message
                                  helm-M-x-help-message
                                  helm-imenu-help-message
                                  helm-colors-help-message
@@ -499,7 +498,7 @@ Simply write the path in the prompt and press `RET', e.g.
 
 *** To create a new file, enter a filename not ending with \"/\"
 
-Note that when you enter a new name, this one is prefixed with [?].
+Note that when you enter a new name, this one is prefixed with [+].
 
 *** Recursive search from Helm-find-files
 
@@ -589,10 +588,10 @@ On completion (\\[helm-ff-run-complete-fn-at-point]):
 
 Use of wildcard is supported to run an action over a set of files.
 
-Example: You can copy all the files with \".el\" extension by using \"*.el\" and
+Example: You can copy all the files with \".el\" extension by using \"​*.el\" and
 then run copy action.
 
-Similarly, \"**.el\" (note the two stars) will recursively select all \".el\"
+Similarly, \"​*​*.el\" (note the two stars) will recursively select all \".el\"
 files under the current directory.
 
 Note that when recursively copying files, you may have files with same name
@@ -607,7 +606,7 @@ to backup files in current directory.
 This command is available only when `dired-async-mode' is active.
 
 When using an action that involves an external backend (e.g. grep), using \"**\"
-is not recommended (even thought it works fine) because it will be slower to
+is not recommended (even though it works fine) because it will be slower to
 select all the files.  You are better off leaving the backend to do it, it will
 be faster.  However, if you know you have not many files it is reasonable to use
 this, also using not recursive wildcard (e.g. \"*.el\") is perfectly fine for
@@ -615,14 +614,14 @@ this.
 
 The \"**\" feature is active by default in the option `helm-file-globstar'.  It
 is different from the Bash \"shopt globstar\" feature in that to list files with
-a named extension recursively you would write \"**.el\" whereas in Bash it would
-be \"**/*.el\".  Directory selection with \"**/\" like Bash \"shopt globstar\"
+a named extension recursively you would write \"​*​*.el\" whereas in Bash it would
+be \"​*​*/​*.el\".  Directory selection with \"​*​*/\" like Bash \"shopt globstar\"
 option is not supported yet.
 
 Helm supports different styles of wildcards:
 
 - `sh' style, the ones supported by `file-expand-wildcards'.
-e.g. \"*.el\", \"*.[ch]\" which match respectively all \".el\"
+e.g. \"​*.el\", \"​*.[ch]\" which match respectively all \".el\"
 files or all \".c\" and \".h\" files.
 
 - `bash' style (partially) In addition to what allowed in `sh'
@@ -808,7 +807,7 @@ instead its scp method if you want to avoid out of memory
 problems and crash Emacs or the whole system.  Moreover when using
 scp method, you will hit a bug when copying more than 3 files at
 the time, see [[https://github.com/emacs-helm/helm/issues/1945][bug#1945]].
-The best way actually is using Rsync to copy files from or to
+The best way currently is using Rsync to copy files from or to
 remote, see [[Use Rsync to copy files][Use Rsync to copy files]].
 Also if you often work on remote you may consider using SSHFS
 instead of relying on tramp.
@@ -874,7 +873,7 @@ rsync command line with a prefix arg (see above).
 
 Since Android doesn't provide anymore mass storage for USB, it is
 not simple to access files on Android, the best way to do this
-actually seems to use Adb, here some hints to set this up, read
+currently seems to use Adb, here some hints to set this up, read
 in addition the Tramp documentation.
 
 1) Install Adb, most distribution provide it.
@@ -915,6 +914,38 @@ you hit `\\[next-history-element]').
 On remote files grep is not well supported by TRAMP unless you suspend updates before
 entering the pattern and re-enable it once your pattern is ready.
 To toggle suspend-update, use `\\<helm-map>\\[helm-toggle-suspend-update]'.
+
+*** Compressing or uncompressing files from helm-find-files
+
+**** Compressing/uncompressing using Helm commands
+
+Helm provide commands like dired (reusing dired code)
+to (un)compress files from `helm-find-files', however these
+commands are asynchronous.
+
+You can use `\\<helm-find-files-map>\\[helm-ff-run-compress-marked-files]' to compress marked files.
+To compress file(s) to an archive use `\\<helm-find-files-map>\\[helm-ff-run-compress-to]'.
+
+To quickly compress/uncompress small files without quitting Helm use `\\<helm-find-files-map>\\[helm-ff-persistent-compress]'.
+NOTE: This persistent action is NOT asynchronous, IOW it will block Helm
+for a while until compression/uncompression finish.
+
+**** Compressing/uncompressing using external commands in Eshell
+
+You can use Eshell aliases to uncompress files,
+see [[Execute Eshell commands on files][Execute Eshell commands on files]] for more infos.
+
+Here some aliases using commands from the excellent =atools= package:
+
+alias pack2zip apack -e -F .zip $* &
+alias pack2gz apack -e -F .tar.gz $* &
+alias pack2bz apack -e -F .tar.bz $* &
+alias pack2xz apack -e -F .tar.xz $* &
+alias unpack aunpack $1 &
+
+Note the \"&\" at end of commands that make eshell aliases asynchronous.
+
+Of course you can use any other commands of your choice as aliases.
 
 *** Execute Eshell commands on files
 
@@ -1268,7 +1299,10 @@ If `all-the-icons' package is installed, turning on
 |\\[helm-ff-sort-by-size]|Sort by size.
 |\\[helm-ff-toggle-dirs-only]|Show only directories.
 |\\[helm-ff-toggle-files-only]|Show only files.
-|\\[helm-ff-sort-by-ext]|Sort by extensions.")
+|\\[helm-ff-sort-by-ext]|Sort by extensions.
+|\\[helm-ff-run-compress-to]|Compress file(s) to archive.
+|\\[helm-ff-run-compress-marked-files]|Compress file(s).
+|\\[helm-ff-persistent-compress]|Compress file(s) without quitting.")
 
 ;;; Help for file-name-history
 ;;
@@ -1369,7 +1403,7 @@ a directory \(e.g `list-directory').
 
 *** Exiting minibuffer with empty string
 
-You can exit minibuffer with empty string with \\<helm-read-file--map>\\[helm-cr-empty-string].
+You can exit minibuffer with empty string with \\<helm-read-file-map>\\[helm-cr-empty-string].
 It is useful when some commands are prompting continuously until you enter an empty prompt.
 
 ** Commands
@@ -2252,6 +2286,15 @@ See [[Moving in `helm-buffer'][Moving in `helm-buffer']].
 (defvar helm-top-help-message
   "* Helm Top
 
+** Tips
+
+*** Auto update
+
+You can enable auto updating in `helm-top' by turning on
+`helm-top-poll-mode' either interactively or in your init file
+with (helm-top-poll-mode 1).
+Calling `helm-top' with a prefix arg also toggle auto updating.
+
 ** Commands
 \\<helm-top-map>
 |Keys|Description
@@ -2260,66 +2303,6 @@ See [[Moving in `helm-buffer'][Moving in `helm-buffer']].
 |\\[helm-top-run-sort-by-cpu]|Sort by CPU usage.
 |\\[helm-top-run-sort-by-user]|Sort alphabetically by user.
 |\\[helm-top-run-sort-by-mem]|Sort by memory.")
-
-;;; Helm Elisp package
-;;
-;;
-(defvar helm-el-package-help-message
-  "* Helm Elisp package
-
-** Tips
-
-*** Compile all your packages asynchronously
-
-If you use async (if you have installed Helm from MELPA you do), only \"helm\",
-\"helm-core\", and \"magit\" are compiled asynchronously.  If you want all your
-packages compiled asynchronously, add this to your init file:
-
-     (setq async-bytecomp-allowed-packages '(all))
-
-*** Upgrade Elisp packages
-
-On initialization (when Emacs is fetching packages on remote), if Helm finds
-packages to upgrade, it will start in the upgradable packages view showing the packages
-available for upgrade.
-
-On subsequent runs, you will have to refresh the list with `C-c \\[universal-argument]'.  If Helm
-finds upgrades you can switch to upgrade view (see below) to see what packages
-are available for upgrade or simply hit `C-c U' to upgrade them all.
-
-To see upgradable packages hit `M-U'.
-
-Then you can install all upgradable packages with the \"upgrade all\" action
-\(`C-c \\[universal-argument]'), or upgrade only specific packages by marking them and running the
-\"upgrade\" action (visible only when there are upgradable packages).  Of course
-you can upgrade a single package by just running the \"upgrade\" action without
-marking it (`C-c u' or `RET') .
-
-\*Warning:* You are strongly advised to \*restart* Emacs after \*upgrading* packages.
-
-*** Meaning of flags prefixing packages
-
-\(Emacs ≥25)
-
-- The flag \"S\" that prefixes package names means that the packages belong to `package-selected-packages'.
-
-- The flag \"U\" that prefix package names mean that this package is no more needed.
-
-** Commands
-\\<helm-el-package-map>
-|Keys|Description
-|-----------+----------|
-|\\[helm-el-package-show-all]|Show all packages.
-|\\[helm-el-package-show-installed]|Show installed packages only.
-|\\[helm-el-package-show-uninstalled]|Show non-installed packages only.
-|\\[helm-el-package-show-upgrade]|Show upgradable packages only.
-|\\[helm-el-package-show-built-in]|Show built-in packages only.
-|\\[helm-el-run-package-install]|Install package(s).
-|\\[helm-el-run-package-reinstall]|Reinstall package(s).
-|\\[helm-el-run-package-uninstall]|Uninstall package(s).
-|\\[helm-el-run-package-upgrade]|Upgrade package(s).
-|\\[helm-el-run-package-upgrade-all]|Upgrade all packages.
-|\\[helm-el-run-visit-homepage]|Visit package homepage.")
 
 ;;; Helm M-x
 ;;

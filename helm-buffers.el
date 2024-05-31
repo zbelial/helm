@@ -36,6 +36,7 @@
 (defvar dired-buffers)
 (defvar org-directory)
 (defvar helm-ff-default-directory)
+(defvar major-mode-remap-alist)
 
 
 (defgroup helm-buffers nil
@@ -100,7 +101,10 @@ When adding a source here it is up to you to ensure the library
 of this source is accessible and properly loaded."
   :type '(repeat (choice symbol)))
 
-(defcustom helm-buffers-end-truncated-string "..."
+(defcustom helm-buffers-end-truncated-string
+  ;; `truncate-string-ellipsis', the function is not available in 27.1
+  ;; See issue#2673. 
+  (if (char-displayable-p ?…) "…" "...")
   "The string to display at end of truncated buffer names."
   :type 'string)
 
@@ -144,8 +148,13 @@ you want to keep the recentest order when narrowing candidates."
   :type 'function)
 
 (defcustom helm-buffers-show-icons nil
-  "Prefix buffer names with an icon when non nil."
-  :type 'boolean)
+  "Prefix buffer names with an icon when non nil.
+Don't use `setq' to set this."
+  :type 'boolean
+  :set (lambda (var val)
+         (if (require 'all-the-icons nil t)
+             (set var val)
+           (set var nil))))
 
 
 ;;; Faces
@@ -330,6 +339,9 @@ Note that this variable is buffer-local.")
                           when (string-match r candidate)
                           return m)))
         (buffer (get-buffer-create candidate)))
+    (helm-aif (and (boundp 'major-mode-remap-alist)
+                   (cdr (assq mjm major-mode-remap-alist)))
+      (setq mjm it))
     (if mjm
         (with-current-buffer buffer (funcall mjm))
       (set-buffer-major-mode buffer))
@@ -374,7 +386,7 @@ Note that this variable is buffer-local.")
 
 
 (defun helm-buffers-get-visible-buffers ()
-  "Returns buffers visibles on current frame."
+  "Returns buffers visible on visible frames."
   (let (result)
     (walk-windows
      (lambda (x)
@@ -383,6 +395,7 @@ Note that this variable is buffer-local.")
     result))
 
 (defun helm-buffer-list-1 (&optional visibles)
+  "Return list of all buffers except VISIBLES buffers."
   (cl-loop for b in (buffer-list)
            for bn = (buffer-name b)
            unless (member bn visibles)
@@ -426,7 +439,7 @@ The list is reordered with `helm-buffer-list-reorder-fn'."
                      (cond ((eq type 'dired)
                             (all-the-icons-octicon "file-directory"))
                            (buf-fname
-                            (all-the-icons-icon-for-file buf-fname))
+                            (all-the-icons-icon-for-file buf-name))
                            (t (all-the-icons-octicon "star" :v-adjust 0.0))))))
            (buf-name (propertize buf-name 'face face1
                                  'help-echo help-echo
@@ -447,7 +460,7 @@ The list is reordered with `helm-buffer-list-reorder-fn'."
                    (format "(%s %s in `%s')"
                            (process-name proc)
                            (process-status proc) dir)
-                 (format "(in `%s')" dir))
+                 (format "`%s'" dir))
                'face face2)))))
 
 (defun helm-buffer--format-mode-name (buf)
@@ -533,10 +546,7 @@ The list is reordered with `helm-buffer-list-reorder-fn'."
 Should be called after others transformers i.e. (boring
 buffers)."
   (cl-assert helm-fuzzy-matching-highlight-fn nil "Wrong type argument functionp: nil")
-  (cl-loop with helm-buffers-show-icons = (and (featurep 'all-the-icons)
-                                               (default-toplevel-value
-                                                   'helm-buffers-show-icons))
-           for i in buffers
+  (cl-loop for i in buffers
            for (name size mode meta) = (if helm-buffer-details-flag
                                            (helm-buffer--details i 'details)
                                          (helm-buffer--details i))
@@ -1000,12 +1010,14 @@ vertically."
 
 (defun helm-buffers-persistent-kill (_buffer)
   (let ((marked (helm-marked-candidates))
-        (sel    (helm-get-selection)))
+        (sel (helm-get-selection))
+        (msg "Buffer `%s' modified, please save it before kill"))
     (unwind-protect
          (cl-loop for b in marked
-                  do (progn
+                  do (if (and (buffer-file-name b) (buffer-modified-p b))
+                         (message msg (buffer-name b))
                        ;; We need to preselect each marked because
-                       ;; helm-buffers-persistent-kill is deleting
+                       ;; helm-buffers-persistent-kill-1 is deleting
                        ;; current selection.
                        (helm-preselect
                         (format "^%s"
@@ -1023,7 +1035,7 @@ vertically."
     (if (or (helm-follow-mode-p)
             (eql current (get-buffer helm-current-buffer))
             (not (eql current (get-buffer candidate))))
-        (switch-to-buffer candidate)
+        (display-buffer candidate)
       (if (and helm-persistent-action-display-window
                (window-dedicated-p
                 (next-window helm-persistent-action-display-window 1)))
@@ -1108,19 +1120,18 @@ Can be used by any source that list buffers."
   (cl-assert (not helm-buffers-in-project-p)
              nil "You are already browsing this project"))
 
+;;;###autoload
 (defun helm-buffers-quit-and-find-file-fn (source)
-  (let* ((sel (helm-get-selection nil nil source))
-         (buf (helm-aand (bufferp sel)
-                         (get-buffer sel)
-                         (buffer-name it))))
-    (when buf
+  (let* ((sel   (get-buffer (helm-get-selection nil nil source)))
+         (bname (and (bufferp sel) (buffer-name sel))))
+    (when bname
       (or (buffer-file-name sel)
-          (car (rassoc buf dired-buffers))
-          (and (with-current-buffer buf
+          (car (rassoc bname dired-buffers))
+          (and (with-current-buffer bname
                  (eq major-mode 'org-agenda-mode))
                org-directory
                (expand-file-name org-directory))
-          (with-current-buffer buf
+          (with-current-buffer bname
             (expand-file-name default-directory))))))
 
 ;;; Candidate Transformers
