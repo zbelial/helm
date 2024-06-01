@@ -383,6 +383,9 @@ the face to apply."
 (defvar helm-outline-source-name "Helm Outline"
   "Source name of helm outline.")
 
+(defvar helm-outline-buffer-name " *Helm Outline*"
+  "Buffer name of helm outline.")
+
 ;;;###autoload
 (defun helm-outline ()
   "Jump to an outline heading with completion."
@@ -391,7 +394,7 @@ the face to apply."
     (helm :sources (helm-build-sync-source helm-outline-source-name
                      :candidates (helm-outline-candidates settings)
                      :action 'helm-outline-actions)
-          :buffer " *helm outline*")))
+          :buffer helm-outline-buffer-name)))
 
 (defcustom helm-org-headline-display-tags nil
   "If non-nil, display tags in matched `org-mode' headlines."

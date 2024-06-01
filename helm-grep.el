@@ -61,6 +61,8 @@ It is intended to use as a let-bound variable, DON'T set this globaly.")
 (defvar helm-pdfgrep-targets nil)
 (defvar helm-grep-last-cmd-line nil)
 (defvar helm-grep-split-line-regexp "^\\([[:lower:][:upper:]]?:?.*?\\):\\([0-9]+\\):\\(.*\\)")
+(defvar helm-grep-dir nil)
+(defvar helm-grep-type nil)
 
 
 ;;; Keymaps
@@ -1723,13 +1725,15 @@ returns if available with current AG version."
 (defun helm-grep-ag-1 (directory &optional type input)
   "Start helm ag in DIRECTORY maybe searching in files of type TYPE.
 If INPUT is provided, use it as the search string."
+  (setq helm-grep-dir directory)
+  (setq helm-grep-type type)
   (setq helm-source-grep-ag
         (helm-make-source (upcase (helm-grep--ag-command)) 'helm-grep-ag-class
-          :header-name (lambda (name)
-                         (format "%s [%s]"
-                                 name (abbreviate-file-name directory)))
-          :candidates-process
-          (lambda () (helm-grep-ag-init directory type))))
+                          :header-name (lambda (name)
+                                         (format "%s [%s]"
+                                                 name (abbreviate-file-name directory)))
+                          :candidates-process
+                          (lambda () (helm-grep-ag-init directory type))))
   (helm-set-local-variable 'helm-input-idle-delay helm-grep-input-idle-delay)
   (helm :sources 'helm-source-grep-ag
         :keymap helm-grep-map
@@ -1746,12 +1750,12 @@ When WITH-TYPES is non-nil provide completion on AG types."
     (helm-grep-ag-1 directory
                     (helm-aif (and with-types
                                    (helm-grep-ag-get-types))
-                        (helm-comp-read
-                         (format "%s type: " com) it
-                         :must-match t
-                         :marked-candidates t
-                         :fc-transformer 'helm-adaptive-sort
-                         :buffer (format "*helm %s types*" com))))))
+                              (helm-comp-read
+                               (format "%s type: " com) it
+                               :must-match t
+                               :marked-candidates t
+                               :fc-transformer 'helm-adaptive-sort
+                               :buffer (format "*helm %s types*" com))))))
 
 ;;; Git grep
 ;;
@@ -1794,6 +1798,14 @@ With a prefix arg ARG git-grep the whole repository."
   (require 'helm-files)
   (helm-grep-git-1 default-directory arg))
 
+(defun helm-grep-in-parent-dir ()
+  "Grep in the parent directory."
+  (interactive)
+  (let ((parent-dir (file-name-parent-directory helm-grep-dir))
+        (type helm-grep-type)
+        (input helm-input))
+    (when parent-dir
+      (helm-run-after-exit #'helm-grep-ag-1 parent-dir type input))))
 
 (provide 'helm-grep)
 

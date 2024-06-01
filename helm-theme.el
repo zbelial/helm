@@ -48,6 +48,9 @@
 (defvar helm-theme-source-name "Helm Theme"
   "Source name of helm theme.")
 
+(defvar helm-theme-buffer-name " *Helm Theme*"
+  "Buffer name of helm theme.")
+
 ;;;###autoload
 (defun helm-load-theme ()
   "Load theme from helm."
@@ -56,7 +59,7 @@
                    :candidates (mapcar #'symbol-name
                                        (custom-available-themes))
                    :action 'helm-theme-actions)
-        :buffer " *helm theme*"))
+        :buffer helm-them-buffer-name))
 
 (provide 'helm-theme)
 
