@@ -4420,11 +4420,23 @@ cons cell."
          (number-to-string candidate))
         (t candidate)))
 
+(defvar helm-pattern-transformer-alist
+  '()
+  "An alist of regex building functions for each source.
+
+Each key is the source name:
+
+Each value is a function that should take a string and return a
+valid regex.")
+
 (defun helm-process-pattern-transformer (pattern source)
   "Execute pattern-transformer attribute function(s) on PATTERN in SOURCE."
-  (helm-aif (assoc-default 'pattern-transformer source)
-      (helm-apply-functions-from-source source it pattern)
-    pattern))
+  (let* ((name (assoc-default 'name source))
+         (transformer (assoc-default name helm-pattern-transformer-alist)))
+    (helm-aif (or transformer
+                  (assoc-default 'pattern-transformer source))
+              (helm-apply-functions-from-source source it pattern)
+              pattern)))
 
 (defun helm-default-match-function (candidate)
   "Check if `helm-pattern' match CANDIDATE.
