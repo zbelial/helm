@@ -1263,7 +1263,7 @@ matching `helm-zgrep-file-extension-regexp' only."
                                     (shell-quote-argument x)))
                           (if (> (length exts) 1)
                               (remove "*" exts)
-                              exts) " ")))
+                            exts) " ")))
          (types (and (not include-files)
                      (not (eq backend 'zgrep))
                      recurse
@@ -1300,6 +1300,7 @@ matching `helm-zgrep-file-extension-regexp' only."
      'helm-grep-default-command com
      'helm-input-idle-delay helm-grep-input-idle-delay
      'default-directory helm-ff-default-directory) ;; [1]
+    (setq helm-ff-default-directory nil)
     ;; Setup the source.
     (set source (helm-make-source src-name 'helm-grep-class
                   :backend backend

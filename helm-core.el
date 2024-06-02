@@ -2000,6 +2000,7 @@ commands using an async source in their sources.
 Use this either let-bounded of helm buffer local.")
 
 ;; Utility: logging
+(defvar helm-log-enabled-froms '())
 (defun helm-log (from format-string &rest args)
   "Log message if `helm-debug' is non-nil.
 Messages are written to the `helm-debug-buffer' buffer.
@@ -2007,7 +2008,9 @@ Messages are written to the `helm-debug-buffer' buffer.
 FROM is the place from where it is called.
 Argument FORMAT-STRING is a string to use with `format'.
 Use optional arguments ARGS like in `format'."
-  (when helm-debug
+  (when (and helm-debug
+             (or (null helm-log-enabled-froms)
+                 (member from helm-log-enabled-froms)))
     (with-current-buffer (get-buffer-create helm-debug-buffer)
       (outline-mode)
       (buffer-disable-undo)
