@@ -1638,11 +1638,10 @@ returns if available with current AG version."
                                (helm-default-directory)
                                default-directory))
         (cmd-line (helm-grep-ag-prepare-cmd-line
-                   helm-pattern
-                   ;; NOTE encode Chinese characters in directory 
-                   (encode-coding-string (or (file-remote-p directory 'localname)
-                                             directory)
-                                         locale-coding-system)
+                   ;; NOTE encode Chinese characters in directory name and pattern
+                   (encode-coding-string helm-pattern locale-coding-system)
+                   (or (file-remote-p directory 'localname)
+                       (encode-coding-string directory locale-coding-system))
                    type))
         (start-time (float-time))
         (proc-name (helm-grep--ag-command)))
