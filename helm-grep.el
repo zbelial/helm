@@ -1638,8 +1638,11 @@ returns if available with current AG version."
                                (helm-default-directory)
                                default-directory))
         (cmd-line (helm-grep-ag-prepare-cmd-line
-                   helm-pattern (or (file-remote-p directory 'localname)
-                                    directory)
+                   helm-pattern
+                   ;; NOTE encode Chinese characters in directory 
+                   (encode-coding-string (or (file-remote-p directory 'localname)
+                                             directory)
+                                         locale-coding-system)
                    type))
         (start-time (float-time))
         (proc-name (helm-grep--ag-command)))
@@ -1672,9 +1675,9 @@ returns if available with current AG version."
                                     'face 'helm-grep-finish))))))
                  ((string= event "finished\n")
                   (helm-log "helm-grep-ag-init" "%s process finished with %s results in %fs"
-                              proc-name
-                              (helm-get-candidate-number)
-                              (- (float-time) start-time))
+                            proc-name
+                            (helm-get-candidate-number)
+                            (- (float-time) start-time))
                   (helm-maybe-show-help-echo)
                   (with-helm-window
                     (setq mode-line-format
@@ -1806,6 +1809,7 @@ With a prefix arg ARG git-grep the whole repository."
         (type helm-grep-type)
         (input helm-input))
     (when parent-dir
+      (helm-log "helm-grep-in-parent-dir" "parent-dir: %s" parent-dir)
       (helm-run-after-exit #'helm-grep-ag-1 parent-dir type input))))
 
 (provide 'helm-grep)

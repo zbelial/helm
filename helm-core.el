@@ -3080,8 +3080,7 @@ HISTORY args see `helm'."
       ;; Reset helm-pattern so that lambda's using it
       ;; before running helm will not start with its old value.
       (setq helm-pattern "")
-      (setq helm--ignore-errors nil
-            helm-debug nil))))
+      (setq helm--ignore-errors nil))))
 
 (defun helm--advice-linum-on ()
   (unless (or (minibufferp)
