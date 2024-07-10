@@ -1,6 +1,19 @@
 #+STARTUP:showall
 
 * NEWS
+** Version 4.0-pre
+*** Packages can now be installed/upgraded asynchronously from helm-packages
+It is still synchronous by default, to enable async customize =helm-packages-async=.
+*** Helm-find-files persistent delete uses now a read-answer prompt
+It is now possible to answer "!" (yes for all) when using marked
+candidates.
+*** Allow saving selection when deleting minibuffer contents
+This is now possible with a prefix arg given when position is at eol
+in minibuffer.  This allow for example showing all candidates keeping
+current selection in helm-ls-git log after a search.
+*** Save files opened from etags and fd in file-name-history
+*** Provide help in helm-read-answer
+*** Disable helm for read-multiple-choice--long-answers
 ** Version 3.9.9
 *** Change prefix arg behavior of helm-show-all-candidates-in-source
 With a prefix arg show all candidates, with a numeric prefix arg show

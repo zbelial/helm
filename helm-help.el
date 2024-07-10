@@ -944,6 +944,8 @@ alias pack2xz apack -e -F .tar.xz $* &
 alias unpack aunpack $1 &
 
 Note the \"&\" at end of commands that make eshell aliases asynchronous.
+NOTE: Using the ampersand at end of command to make it asynchronous is broken
+in all emacs versions before emacs-28 (see emacs bug#50209).
 
 Of course you can use any other commands of your choice as aliases.
 
@@ -1038,9 +1040,9 @@ Starting at helm version 2.9.7 it is somewhat possible to
 colorize fnames by listing files without loosing performances with
 external commands (ls and awk) if your system is compatible.
 For this you can use `helm-list-dir-external' as value
-for `helm-list-directory-function'.
+for `helm-list-remote-directory-fn'.
 
-See `helm-list-directory-function' documentation for more infos.
+See `helm-list-remote-directory-fn' documentation for more infos.
 
 **** Completing host
 

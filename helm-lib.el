@@ -1272,7 +1272,7 @@ behaviour of this function is really needed."
       (goto-char (point-min)))
     (decode-coding-string (buffer-string) 'utf-8)))
 
-(defun helm-read-answer (prompt answer-list)
+(defun helm-read-answer (prompt answer-list &optional help)
   "Prompt user for an answer.
 Arg PROMPT is the prompt to present user the different possible
 answers, ANSWER-LIST is a list of strings.
@@ -1280,26 +1280,66 @@ If user enters an answer which is one of ANSWER-LIST return this
 answer, otherwise keep prompting for a valid answer.
 Note that answer should be a single char, only short answer are
 accepted.
+When HELP is provided, it is a string or a function that returns a string
+which will be displayed in a buffer when \"h\"
+is pressed (don't forget to add \"h\" in prompt).
 
 Example:
 
-    (helm-acase (helm-read-answer
-             \"answer [y,n,!,q]: \"
-             \\='(\"y\" \"n\" \"!\" \"q\"))
-       (\"y\" \"yes\")
-       (\"n\" \"no\")
-       (\"!\" \"all\")
-       (\"q\" \"quit\"))
+     (helm-acase (helm/read-answer
+                 \"answer [y,n,!,q,h]: \"
+                 \\='(\"y\" \"n\" \"!\" \"q\")
+                 \"(y)es:  do this
+\(n)o:   skip
+\(!)all: do this for all
+\(q)uit: quit skipping remaining candidates\")
+      (\"y\" \"yes\")
+      (\"n\" \"no\")
+      (\"!\" \"all\")
+      (\"q\" \"quit\"))
 
 "
-  (helm-awhile (read-key (propertize prompt 'face 'minibuffer-prompt))
-    (let ((str (and (characterp it) (string it))))
-      (if (and str (member str answer-list))
-          (cl-return str)
-        (message "Please answer by %s" (mapconcat 'identity answer-list ", "))
-        (sit-for 1)))))
+  (unwind-protect
+       (helm-awhile (read-key (propertize
+                               prompt 'face 'minibuffer-prompt))
+         (let ((str (and (characterp it) (string it)))
+               (choices (remove "h" answer-list)))
+           (cond ((and str (member str choices))
+                  (cl-return str))
+                 ((and help (string= str "h"))
+                  (helm-aif (get-buffer-window "*choices help*" 'visible)
+                      (quit-window t it)
+                    (with-current-buffer-window "*choices help*"
+                        '(display-buffer-at-bottom
+                          (window-height . fit-window-to-buffer)
+                          (preserve-size . (nil . t)))
+                        nil (progn
+                              (insert (if (functionp help)
+                                          (funcall help) help))
+                              (setq-local cursor-type nil)))))
+                 (t (message "Please answer by %s"
+                             (mapconcat 'identity choices ", "))
+                    (sit-for 1)))))
+    (helm-aand help (get-buffer-window "*choices help*") (quit-window t it))))
 
-(defun helm-read-answer-dolist-with-action (prompt list action &optional prompt-formater)
+(defun helm-read-answer-default-help-fn ()
+  "Return a string suitable for `helm-read-answer' help."
+  (with-temp-buffer
+    (save-excursion
+      (insert "y: yes\n"
+              "n: no\n"
+              "!: yes for all\n"
+              "q: quit\n"
+              "h: toggle this help"))
+    (while (re-search-forward "^\\(.\\):" nil t)
+      (helm-add-face-text-properties (match-beginning 1) (match-end 1)
+                                     'font-lock-variable-name-face))
+    (buffer-string)))
+
+(defun helm-read-answer-dolist-with-action (prompt list action
+                                            &optional
+                                              prompt-formater
+                                              help-function)
   "Read answer with PROMPT and execute ACTION on each element of LIST.
 
 Argument PROMPT is a format spec string e.g. \"Do this on %s?\"
@@ -1314,19 +1354,29 @@ differently depending of answer:
 - !  Don't ask anymore and execute ACTION on remaining elements.
 - q  Skip all remaining elements.
 
-PROMPT-FORMATER is a function called with one argument which is
-used to modify each element of LIST to be displayed in PROMPT."
+PROMPT-FORMATER may be a function or a list containing strings and
+functions.  Functions either in list or alone are called on each element
+in LIST to be displayed in PROMPT."
   (let (dont-ask)
     (catch 'break
       (dolist (elm list)
         (if dont-ask
             (funcall action elm)
           (helm-acase (helm-read-answer
-                       (format (concat prompt "[y,n,!,q]")
-                               (if prompt-formater
-                                   (funcall prompt-formater elm)
-                                 elm))
-                       '("y" "n" "!" "q"))
+                       (apply #'format
+                              (concat prompt "[y,n,!,q,h]")
+                              (helm-acase prompt-formater
+                                ((guard (consp it))
+                                 (mapcar (lambda (x)
+                                           (if (functionp x)
+                                               (funcall x elm)
+                                             x))
+                                         it))
+                                ((guard (functionp it))
+                                 (list (funcall it elm)))
+                                (t (list elm))))
+                       '("y" "n" "!" "q")
+                       (or help-function #'helm-read-answer-default-help-fn))
             ("y" (funcall action elm))
             ("n" (ignore))
             ("!" (prog1

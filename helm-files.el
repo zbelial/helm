@@ -445,8 +445,8 @@ very large directories."
   :type 'boolean)
 
 (defcustom helm-files-save-history-extra-sources
-  '("Find" "Locate" "Recentf"
-    "Files from Current Directory" "File Cache")
+  '("Find" "Fd" "Locate" "Recentf"
+    "Files from Current Directory" "File Cache" "Etags")
   "Extras source that save candidate to `file-name-history'."
   :type '(repeat (choice string)))
 
@@ -594,7 +594,10 @@ command on remote (and/or locally if you want to trash as root).
 On Ubuntu-based distributions it is \\='trash-cli'."
   :type 'boolean)
 
-(defcustom helm-list-directory-function
+(defvaralias 'helm-list-directory-function 'helm-list-remote-directory-fn)
+(make-obsolete-variable 'helm-list-directory-function 'helm-list-remote-directory-fn "4.0")
+
+(defcustom helm-list-remote-directory-fn
   (cl-case system-type
     (gnu/linux #'helm-list-dir-external)
     (berkeley-unix #'helm-list-dir-lisp)
@@ -713,7 +716,8 @@ Currently Helm provides two functions to draw the progress bar:
 - The default progress bar which use the whole height of mode-line and print
 colored spaces to mimic a progress bar.
 - The SVG based progress bar which use the external library svg-lib (you will
-have to install to use this function)."
+have to install it to use this function) and needs emacs to be compiled with svg
+support."
   :type '(choice
           (function :tag "Default progress bar"
                     helm-rsync-default-progress-bar)
@@ -1417,6 +1421,8 @@ ACTION can be `rsync' or any action supported by `helm-dired-action'."
                       'face 'helm-ff-rsync-progress-1)))
 
 (defun helm-rsync-svg-progress-bar (proc percent info)
+  (cl-assert (image-type-available-p 'svg) nil
+             "svg-lib requires Emacs to be compiled with svg support")
   (require 'svg-lib)
   (format "%s%s%s"
           (propertize " " 'display (svg-lib-tag
@@ -1794,7 +1800,7 @@ this working."
   (require 'helm-adaptive)
   (require 'em-alias) (eshell-read-aliases-list)
   (unless (> emacs-major-version 27)
-    ;; This advice have been merged in emacs-28.
+    ;; This advice has been merged in emacs-28.
     (advice-add 'eshell-eval-command :override #'helm--advice-eshell-eval-command))
   (when (or eshell-command-aliases-list
             (y-or-n-p "No eshell aliases found, run eshell-command without alias anyway? "))
@@ -2339,10 +2345,11 @@ This doesn't replace inside the files, only modify filenames."
                                         (file-name-extension new t))))
                     (unless (string= query "!")
                       (setq query (helm-read-answer (format
-                                                     "Replace `%s' by `%s' [!,y,n,q]"
+                                                     "Replace `%s' by `%s' [!,y,n,q,h]"
                                                      (helm-basename old)
                                                      (helm-basename new))
-                                                    '("y" "n" "!" "q"))))
+                                                    '("y" "n" "!" "q")
+                                                    #'helm-read-answer-default-help-fn)))
                     (when (string= query "q")
                       (cl-return (message "Operation aborted")))
                     (unless (string= query "n")
@@ -3608,42 +3615,42 @@ debugging purpose."
 (defun helm-list-directory (directory &optional sel)
   "List directory DIRECTORY.
 
-If DIRECTORY is remote use `helm-list-directory-function',
+If DIRECTORY is remote use `helm-list-remote-directory-fn',
 otherwise use `directory-files'.
 SEL argument is only here for debugging purpose, it default to
 `helm-get-selection'."
   (let* ((remote (file-remote-p directory 'method))
-         (helm-list-directory-function
-          (cond ((and remote (string= remote "ftp"))
-                 #'helm-list-dir-lisp)
-                ((and remote (string= remote "adb"))
-                 #'helm-list-dir-adb)
-                (t helm-list-directory-function)))
-         (remote-fn-p (eq helm-list-directory-function
-                          'helm-list-dir-external))
-         (sort-method (cl-case helm-ff-initial-sort-method
-                        (newest (if (and remote remote-fn-p)
+         (helm-list-remote-directory-fn
+          (helm-acase remote
+            ("ftp" #'helm-list-dir-lisp)
+            ("adb" #'helm-list-dir-adb)
+            (t helm-list-remote-directory-fn)))
+         (use-ext-remote-fn
+          (and remote
+               (eq helm-list-remote-directory-fn 'helm-list-dir-external)))
+         (sort-method (helm-acase helm-ff-initial-sort-method
+                        (newest (if use-ext-remote-fn
                                     "-t" #'file-newer-than-file-p))
-                        (size (if (and remote remote-fn-p)
+                        (size (if use-ext-remote-fn
                                   "-S" #'helm-ff-file-larger-that-file-p))
-                        (ext (unless (and remote remote-fn-p)
-                               #'helm-group-candidates-by))
-                        (t nil))))
-    (cond (remote
-           (ignore-errors
-             (funcall helm-list-directory-function directory sort-method)))
-          ((memq helm-ff-initial-sort-method '(newest size))
-           (sort (helm-local-directory-files
-                  directory t directory-files-no-dot-files-regexp)
-                 sort-method))
-          ((eq helm-ff-initial-sort-method 'ext)
-           (funcall sort-method
-                    (helm-local-directory-files
-                     directory t directory-files-no-dot-files-regexp)
-                    #'file-name-extension
-                    (or sel (helm-get-selection) "")))
-          (t (helm-local-directory-files
-              directory t directory-files-no-dot-files-regexp)))))
+                        (ext (if use-ext-remote-fn
+                                 #'identity
+                               #'helm-group-candidates-by)))))
+    (if remote
+        (ignore-errors
+          (funcall helm-list-remote-directory-fn directory sort-method))
+      (helm-acase helm-ff-initial-sort-method
+        ((newest size)
+         (sort (helm-local-directory-files
+                directory t directory-files-no-dot-files-regexp)
+               sort-method))
+        (ext (funcall sort-method
+                      (helm-local-directory-files
+                       directory t directory-files-no-dot-files-regexp)
+                      #'file-name-extension
+                      (or sel (helm-get-selection) "")))
+        (t (helm-local-directory-files
+            directory t directory-files-no-dot-files-regexp))))))
 
 (defsubst helm-ff-file-larger-that-file-p (f1 f2)
   (let ((attr1 (file-attributes f1))
@@ -6105,31 +6112,14 @@ When a prefix arg is given, meaning of
     (let* ((marked (helm-marked-candidates))
            (trash (helm-ff--delete-by-moving-to-trash (car marked)))
            (helm-ff--trashed-files
-            (and trash (helm-ff-trash-list (helm-trash-directory)))))
+            (and trash (helm-ff-trash-list (helm-trash-directory))))
+           (old--allow-recursive-deletes helm-ff-allow-recursive-deletes))
       (unwind-protect
-           (cl-loop for c in marked do
-                    (progn (helm-preselect
-                            (format helm-ff-last-expanded-candidate-regexp
-                                    (regexp-quote
-                                     (if (and helm-ff-transformer-show-only-basename
-                                              (not (helm-ff-dot-file-p c)))
-                                         (helm-basename c) c))))
-                           (when (y-or-n-p
-                                  (format "Really %s file `%s'? "
-                                          (if trash "Trash" "Delete")
-                                          (abbreviate-file-name c)))
-                             (helm-acase (helm-delete-file
-                                          c helm-ff-signal-error-on-dot-files 'synchro trash)
-                               (skip
-                                ;; This happens only when trying to
-                                ;; trash a file already trashed.
-                                (helm-delete-visible-mark (helm-this-visible-mark))
-                                (if (helm-end-of-source-p)
-                                    (helm-previous-line)
-                                  (helm-next-line)))
-                               (t (helm-delete-current-selection)))
-                             (message nil)
-                             (helm--remove-marked-and-update-mode-line c))))
+           (helm-read-answer-dolist-with-action
+            "Really %s file `%s'"
+            marked
+            (lambda (file) (helm-ff--quick-delete-action file trash))
+            (list (if trash "Trash" "Delete") #'abbreviate-file-name))
         (setq helm-marked-candidates nil
               helm-visible-mark-overlays nil)
         (helm-force-update
@@ -6138,9 +6128,31 @@ When a prefix arg is given, meaning of
              (format helm-ff-last-expanded-candidate-regexp
                      (regexp-quote (if (and helm-ff-transformer-show-only-basename
                                             (not (helm-ff-dot-file-p presel)))
-                                       (helm-basename presel) presel))))))))))
+                                       (helm-basename presel) presel))))))
+        (setq helm-ff-allow-recursive-deletes old--allow-recursive-deletes)))))
 
-(defun helm-delete-file (file &optional error-if-dot-file-p synchro trash)
+(defun helm-ff--quick-delete-action (candidate trash)
+  "Delete or trash CANDIDATE and remove it from display."
+  (helm-preselect
+   (format helm-ff-last-expanded-candidate-regexp
+           (regexp-quote
+            (if (and helm-ff-transformer-show-only-basename
+                     (not (helm-ff-dot-file-p candidate)))
+                (helm-basename candidate) candidate))))
+  (helm-acase (helm-delete-file
+               candidate helm-ff-signal-error-on-dot-files trash)
+    (skip
+     ;; This happens only when trying to
+     ;; trash a file already trashed.
+     (helm-delete-visible-mark (helm-this-visible-mark))
+     (if (helm-end-of-source-p)
+         (helm-previous-line)
+       (helm-next-line)))
+    (t (helm-delete-current-selection)))
+  (message nil)
+  (helm--remove-marked-and-update-mode-line candidate))
+
+(defun helm-delete-file (file &optional error-if-dot-file-p trash)
   "Delete FILE after querying the user.
 
 When a prefix arg is given, meaning of
@@ -6177,33 +6189,22 @@ is nil."
              (message "User error: `%s' is already trashed" file)
              (sit-for 1.5)
              (cl-return 'skip))
-            ((and (eq (nth 0 file-attrs) t)
+            ((and (eq (nth 0 file-attrs) t) ; a directory.
                   (directory-files file t directory-files-no-dot-files-regexp))
-             ;; Synchro means persistent deletion from HFF.
-             (if synchro
-                 (when (or helm-ff-allow-recursive-deletes
-                           trash
-                           (y-or-n-p (format "Recursive delete of `%s'? "
-                                             (abbreviate-file-name file))))
-                   (delete-directory file 'recursive trash))
-               ;; Avoid using dired-delete-file really annoying in
-               ;; emacs-26 but allows using ! (instead of all) to not
-               ;; confirm anymore for recursive deletion of
-               ;; directory. This is not persistent for all session
-               ;; like emacs-26 does with dired-delete-file (think it
-               ;; is a bug).
-               (if (or helm-ff-allow-recursive-deletes trash)
-                   (delete-directory file 'recursive trash)
-                 (helm-acase (helm-read-answer (format "Recursive delete of `%s'? [y,n,!,q]"
-                                                      (abbreviate-file-name file))
-                                              '("y" "n" "!" "q"))
-                   ("y" (delete-directory file 'recursive trash))
-                   ("!" (setq helm-ff-allow-recursive-deletes t)
-                         (delete-directory file 'recursive trash))
-                   ("n" (cl-return 'skip))
-                   ("q" (throw 'helm-abort-delete-file
-                           (progn
-                             (message "Abort file deletion") (sleep-for 1))))))))
+             (if (or helm-ff-allow-recursive-deletes trash)
+                 (delete-directory file 'recursive trash)
+               (helm-acase (helm-read-answer
+                            (format "Recursive delete of `%s'? [y,n,!,q,h]"
+                                    (abbreviate-file-name file))
+                            '("y" "n" "!" "q")
+                            #'helm-read-answer-default-help-fn)
+                 ("y" (delete-directory file 'recursive trash))
+                 ("!" (setq helm-ff-allow-recursive-deletes t)
+                      (delete-directory file 'recursive trash))
+                 ("n" (cl-return 'skip))
+                 ("q" (throw 'helm-abort-delete-file
+                        (progn
+                          (message "Abort file deletion") (sleep-for 1)))))))
             ((eq (nth 0 file-attrs) t)
              (delete-directory file nil trash))
             (t (delete-file file trash)))
@@ -6234,7 +6235,7 @@ When a prefix arg is given, meaning of
                (dolist (i files)
                  (set-text-properties 0 (length i) nil i)
                  (let ((res (helm-delete-file
-                             i helm-ff-signal-error-on-dot-files nil trash)))
+                             i helm-ff-signal-error-on-dot-files trash)))
                    (if (eq res 'skip)
                        (progn (message "Directory is not empty, skipping")
                               (sleep-for 1))
@@ -6632,7 +6633,8 @@ be directories."
                  ;; other parts of Emacs seems to,
                  ;; and we don't want to introduce duplicates.
                  (add-to-history 'file-name-history
-                                 (abbreviate-file-name sel)))))))
+                                 (abbreviate-file-name
+                                  (expand-file-name sel))))))))
 (add-hook 'helm-exit-minibuffer-hook 'helm-files-save-file-name-history)
 
 (defvar helm-source-file-name-history

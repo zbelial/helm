@@ -194,6 +194,9 @@ window handling a buffer, it is this one we store.")
 (defvar helm--tramp-archive-maybe-loaded nil)
 (defvar helm--original-dedicated-windows-alist nil
   "[INTERNAL] Store all dedicated windows with their dedicated state on startup")
+(defvar helm--deleting-minibuffer-contents-from nil
+  "[INTERNAL] Recenter when deleting minibuffer-contents and preselecting.
+This is a flag used internally.")
 
 ;;; Multi keys
 ;;
@@ -1477,6 +1480,20 @@ and not a fuzzy pattern.  When using multi match patterns, each
 pattern starting with \"!\" is interpreted as a negation i.e.
 match everything but this.
 
+** Moving selection to a specific candidate
+
+Once you found the candidate you were searching by narrowing candidates,
+you may want to keep the selection on this candidate after deleting
+minibuffer contents and showing the whole list of candidates, this is
+useful for example when examining and searching git log or similar.  To
+achieve this, ensure all candidates are shown at startup or at least
+enough candidates to be sure your candidate is not beyond candidate-number-limit,
+you can use \\<helm-map>\\[helm-show-all-candidates-in-source] for this with a prefix arg or a numeric prefix arg.
+Once this is done narrow down your list by typing in minibuffer, once the
+selection is on the candidate you want to keep, hit C-u \\<helm-map>\\[helm-delete-minibuffer-contents].
+Another way to achieve this is to mark the candidate, then delete minibuffer
+contents with \\<helm-map>\\[helm-delete-minibuffer-contents] and reach back the mark with \\<helm-map>\\[helm-next-visible-mark].
+
 *** Completion-styles
 
 UPDATE: At version 3.8.0 Helm default is now to NOT use
@@ -1725,7 +1742,12 @@ and are by the way not compatible with Helm.
 \[1] Behavior may change depending context in some source e.g. `helm-find-files'.
 
 \[2] Delete from point to end or all depending on the value of
-`helm-delete-minibuffer-contents-from-point'.
+`helm-delete-minibuffer-contents-from-point'.  When the cursor is at end
+of minibuffer and a prefix arg is given, delete the whole contents of
+minibuffer and keep selection as well when possible (depends of
+candidate-number-limit) when helm update to the whole list of
+candidates.  This depends also of requires-pattern i.e. you may have a
+source that display nothing when there is an input < to requires-pattern.
 
 NOTE: Any of these bindings are from `helm-map' and may be
 overriten by the map specific to the current source in use (each
@@ -3150,18 +3172,22 @@ buffers (sessions).  When calling from Lisp, specify a
   (interactive)
   (with-helm-alive-p
     (let ((arg (if (null (member helm-buffer helm-buffers)) 0 1)))
-      (if (> (length helm-buffers) arg)
-          (helm-run-after-exit (lambda () (helm-resume (nth arg helm-buffers))))
-        (message "No previous helm sessions available for resuming!")))))
+      (cond ((> (minibuffer-depth) 1)
+             (message "Can't resume from recursive minibuffers"))
+            ((> (length helm-buffers) arg)
+             (helm-run-after-exit (lambda () (helm-resume (nth arg helm-buffers)))))
+            (t (message "No previous helm sessions available for resuming"))))))
 (put 'helm-resume-previous-session-after-quit 'helm-only t)
 
 (defun helm-resume-list-buffers-after-quit ()
   "List Helm buffers that can be resumed within a running Helm."
   (interactive)
   (with-helm-alive-p
-    (if (> (length helm-buffers) 0)
-        (helm-run-after-exit (lambda () (helm-resume t)))
-      (message "No previous helm sessions available for resuming!"))))
+    (cond ((> (minibuffer-depth) 1)
+           (message "Can't resume from recursive minibuffers"))
+          ((> (length helm-buffers) 0)
+           (helm-run-after-exit (lambda () (helm-resume t))))
+          (t (message "No previous helm sessions available for resuming")))))
 (put 'helm-resume-list-buffers-after-quit 'helm-only t)
 
 (defun helm-resume-p (resume)
@@ -3441,10 +3467,10 @@ The function used to display `helm-buffer' by calling
         (helm-split-window-default-side
          (if (and (not helm-full-frame)
                   helm-reuse-last-window-split-state)
-             (cond ((eq helm-split-window-default-side 'same) 'same)
-                   ((eq helm-split-window-default-side 'other) 'other)
-                   (helm--window-side-state)
-                   (t helm-split-window-default-side))
+             (helm-acase helm-split-window-default-side
+               ((same other) it) ; take precedence on *-window-side-state.
+               ((guard helm--window-side-state) guard)
+               (t it))
            helm-split-window-default-side))
         (disp-fn (with-current-buffer buffer
                    (helm-resolve-display-function
@@ -4055,7 +4081,14 @@ Update is reenabled when idle 1s."
   "Delete char backward and update when reaching prompt."
   (interactive "p")
   (condition-case _err
-      (delete-char (- arg))
+      (cond ((and (use-region-p)
+                  delete-active-region
+                  (= arg 1))
+             ;; If a region is active, kill or delete it.
+             (if (eq delete-active-region 'kill)
+                 (kill-region (region-beginning) (region-end) 'region)
+               (delete-region (region-beginning) (region-end))))
+            (t (delete-char (- arg))))
     (buffer-read-only
      (progn
        (helm-update)
@@ -4337,12 +4370,13 @@ Cache the candidates if there is no cached value yet."
        (let ((real (if (consp ,candidate)
                        (cdr ,candidate)
                      ,candidate)))
-         (if (and (listp it)
-                  (not (functionp it))) ;; Don't treat lambda's as list.
-             (cl-loop for f in it
-                      do (setq ,candidate (funcall f real))
-                      finally return ,candidate)
-           (setq ,candidate (funcall it real))))
+         (when real
+           (if (and (listp it)
+                    (not (functionp it))) ;; Don't treat lambda's as list.
+               (cl-loop for f in it
+                        do (setq ,candidate (funcall f real))
+                        finally return ,candidate)
+             (setq ,candidate (funcall it real)))))
      ,candidate))
 
 (defun helm--initialize-one-by-one-candidates (candidates source)
@@ -5677,8 +5711,13 @@ If action buffer is selected, back to the Helm buffer."
                                                 (helm-subr-native-elisp-p actions))
                                             "Anonymous" actions))
                              (helm-show-action-buffer actions)
-                             ;; Be sure the minibuffer is entirely deleted (bug#907).
-                             (helm--delete-minibuffer-contents-from "")
+                             ;; Be sure the minibuffer is entirely deleted
+                             ;; (bug#907).  Previously this was done from
+                             ;; `helm--delete-minibuffer-contents-from' which
+                             ;; was itself force updating, now do it explicitely
+                             ;; from here.
+                             (helm-set-pattern "" t)
+                             (helm-force-update)
                              ;; Unhide minibuffer to make visible action prompt [1].
                              (with-selected-window (minibuffer-window)
                                (remove-overlays) (setq cursor-type t))
@@ -6533,7 +6572,7 @@ This is the default function for `helm-debug-function'."
 ;; Misc
 
 (defun helm-preselect (candidate-or-regexp &optional source)
-  "Move selection to CANDIDATE-OR-REGEXP on Helm start.
+  "Move selection to CANDIDATE-OR-REGEXP.
 
 CANDIDATE-OR-REGEXP can be a:
 
@@ -6542,14 +6581,15 @@ CANDIDATE-OR-REGEXP can be a:
 - Nullary function, which moves to a candidate
 
 When CANDIDATE-OR-REGEXP is a cons cell, tries moving to first
-element of the cons cell, then the second, and so on.  This allows
-selection of duplicate candidates after the first.
+element of the cons cell, then the second, and so on.  This
+allows selection of duplicate candidates after the first.
 
-Optional argument SOURCE is a Helm source object."
+When SOURCE is specified, move to it and search
+CANDIDATE-OR-REGEXP from there."
   (with-helm-buffer
     (when candidate-or-regexp
       (if source
-          (helm-goto-source source)
+          (progn (helm-goto-source source) (forward-line 1))
         (goto-char (point-min))
         (forward-line 1))
       (if (functionp candidate-or-regexp)
@@ -6570,6 +6610,7 @@ Optional argument SOURCE is a Helm source object."
     (when helm-allow-mouse
       (helm--mouse-reset-selection-help-echo))
     (helm-mark-current-line)
+    (when helm--deleting-minibuffer-contents-from (recenter))
     (helm-display-mode-line (or source (helm-get-current-source)))
     (helm-log-run-hook "helm-preselect" 'helm-after-preselection-hook)))
 
@@ -6638,31 +6679,36 @@ Used generally to modify current selection."
   `(helm--edit-current-selection-internal
     (lambda () ,@forms)))
 
-(defun helm--delete-minibuffer-contents-from (from-str)
+(defun helm--delete-minibuffer-contents-from (from-str &optional presel)
   ;; Giving an empty string value to FROM-STR delete all.
-  (let ((input (minibuffer-contents)))
+  (let ((input (minibuffer-contents))
+        (src (and presel (helm-get-current-source)))
+        (helm--deleting-minibuffer-contents-from presel)
+        helm-move-to-line-cycle-in-source)
     (helm-reset-yank-point)
-    (if (> (length input) 0)
-        ;; minibuffer is not empty, delete contents from end
-        ;; of FROM-STR and update.
-        (helm-set-pattern from-str)
-      ;; minibuffer is already empty, force update.
-      (helm-force-update))))
+    (unless (zerop (length input))
+      ;; minibuffer is not empty, delete contents from end
+      ;; of FROM-STR and update.
+      (helm-set-pattern from-str t)
+      (helm-update presel src))))
 
 (defun helm-delete-minibuffer-contents (&optional arg)
   "Delete minibuffer contents.
-When `helm-delete-minibuffer-contents-from-point' is non-nil,
-delete minibuffer contents from point instead of deleting all.
-With a prefix arg reverse this behaviour.  When at the end of
-minibuffer, delete all."
+When `helm-delete-minibuffer-contents-from-point' is non-nil, delete
+minibuffer contents from point instead of deleting all.  With a prefix
+ARG reverse this behaviour.  When at the end of minibuffer, delete all
+but if a prefix ARG were given also preselect current selection when
+updating if possible (selection may be beyond candidate-number-limit)."
   (interactive "P")
   (with-helm-alive-p
     (let ((str (if helm-delete-minibuffer-contents-from-point
                    (if (or arg (eobp))
                        "" (helm-minibuffer-completion-contents))
                  (if (and arg (not (eobp)))
-                     (helm-minibuffer-completion-contents) ""))))
-      (helm--delete-minibuffer-contents-from str))))
+                     (helm-minibuffer-completion-contents) "")))
+          (presel (and arg (eobp)
+                       (concat "^" (regexp-quote (helm-get-selection nil t)) "$"))))
+      (helm--delete-minibuffer-contents-from str presel))))
 (put 'helm-delete-minibuffer-contents 'no-helm-mx t)
 
 
