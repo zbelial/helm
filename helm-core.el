@@ -6053,6 +6053,7 @@ Key arg DIRECTION can be one of:
           (helm-move--beginning-of-multiline-candidate))
         (helm-display-source-at-screen-top-maybe where)
         (helm-mark-current-line)
+        (recenter)
         (when follow
           (helm-follow-execute-persistent-action-maybe))
         (helm-display-mode-line (setq source (helm-get-current-source)))

@@ -61,6 +61,8 @@ It is intended to use as a let-bound variable, DON'T set this globaly.")
 (defvar helm-pdfgrep-targets nil)
 (defvar helm-grep-last-cmd-line nil)
 (defvar helm-grep-split-line-regexp "^\\([[:lower:][:upper:]]?:?.*?\\):\\([0-9]+\\):\\(.*\\)")
+(defvar helm-grep-dir nil)
+(defvar helm-grep-type nil)
 
 
 ;;; Keymaps
@@ -1635,8 +1637,10 @@ returns if available with current AG version."
                                (helm-default-directory)
                                default-directory))
         (cmd-line (helm-grep-ag-prepare-cmd-line
-                   helm-pattern (or (file-remote-p directory 'localname)
-                                    directory)
+                   ;; NOTE encode Chinese characters in directory name and pattern
+                   (encode-coding-string helm-pattern locale-coding-system)
+                   (or (file-remote-p directory 'localname)
+                       (encode-coding-string directory locale-coding-system))                   
                    type))
         (start-time (float-time))
         (proc-name (helm-grep--ag-command)))
@@ -1669,9 +1673,9 @@ returns if available with current AG version."
                                     'face 'helm-grep-finish))))))
                  ((string= event "finished\n")
                   (helm-log "helm-grep-ag-init" "%s process finished with %s results in %fs"
-                              proc-name
-                              (helm-get-candidate-number)
-                              (- (float-time) start-time))
+                            proc-name
+                            (helm-get-candidate-number)
+                            (- (float-time) start-time))
                   (helm-maybe-show-help-echo)
                   (with-helm-window
                     (setq mode-line-format
@@ -1723,6 +1727,8 @@ returns if available with current AG version."
 (defun helm-grep-ag-1 (directory &optional type input)
   "Start helm ag in DIRECTORY maybe searching in files of type TYPE.
 If INPUT is provided, use it as the search string."
+  (setq helm-grep-dir directory)
+  (setq helm-grep-type type)  
   (setq helm-source-grep-ag
         (helm-make-source (upcase (helm-grep--ag-command)) 'helm-grep-ag-class
           :header-name (lambda (name)
@@ -1794,6 +1800,14 @@ With a prefix arg ARG git-grep the whole repository."
   (require 'helm-files)
   (helm-grep-git-1 default-directory arg))
 
+(defun helm-grep-in-parent-dir ()
+  "Grep in the parent directory."
+  (interactive)
+  (let ((parent-dir (file-name-parent-directory helm-grep-dir))
+        (type helm-grep-type)
+        (input helm-input))
+    (when parent-dir
+      (helm-run-after-exit #'helm-grep-ag-1 parent-dir type input))))
 
 (provide 'helm-grep)
 

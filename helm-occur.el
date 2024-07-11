@@ -892,6 +892,15 @@ To use this bind it to a key in `isearch-mode-map'."
             helm-moccur-always-search-in-current))
     (helm-multi-occur-1 buf-list input)))
 
+(defun helm-occur-grep-in-parent-dir ()
+  "Grep in the parent directory."
+  (interactive)
+  (let ((current-dir default-directory)
+        (type nil)
+        (input helm-input))
+    (when current-dir
+      (helm-run-after-exit #'helm-grep-ag-1 current-dir type input))))
+
 (provide 'helm-occur)
 
 ;;; helm-occur.el ends here
