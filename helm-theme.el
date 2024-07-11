@@ -59,7 +59,7 @@
                    :candidates (mapcar #'symbol-name
                                        (custom-available-themes))
                    :action 'helm-theme-actions)
-        :buffer helm-them-buffer-name))
+        :buffer helm-theme-buffer-name))
 
 (provide 'helm-theme)
 
