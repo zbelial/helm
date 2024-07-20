@@ -255,10 +255,16 @@ algorithm."
   (remove-hook 'helm-move-selection-after-hook
                #'helm-M-x--move-selection-after-hook))
 
+(defcustom helm-M-x-filtered-candidate-transformer
+  #'helm-M-x-transformer
+  "The function to transform filtered candidates."
+  :group 'helm-command
+  :type 'function)
+
 (defclass helm-M-x-class (helm-source-in-buffer helm-type-command)
   ((requires-pattern :initform 0)
    (must-match :initform t)
-   (filtered-candidate-transformer :initform 'helm-M-x-transformer-no-sort)
+   (filtered-candidate-transformer :initform (lambda (candidates _source) (funcall helm-M-x-filtered-candidate-transformer candidates _source)))
    (persistent-help :initform "Describe this command")
    (help-message :initform 'helm-M-x-help-message)
    (nomark :initform t)

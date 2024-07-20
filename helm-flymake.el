@@ -28,6 +28,9 @@
 
 ;;; Code:
 
+(require 'flymake)
+(require 'helm)
+
 (defcustom helm-flymake-actions
   '(("Goto flymake diagnostic" . helm-flymake-action-goto))
   "Actions for helm-flymake."

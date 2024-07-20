@@ -29,6 +29,7 @@
 ;;; Code:
 
 (require 'bm)
+(require 'helm)
 
 (defface helm-bm-annotation-face nil
   "Face used for annotation."
