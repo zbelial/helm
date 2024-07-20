@@ -131,5 +131,6 @@
                      :action 'helm-bm-actions)
           :buffer helm-bm-buffer-name)))
 
-
 (provide 'helm-bm)
+
+;;; helm-bm.el ends here

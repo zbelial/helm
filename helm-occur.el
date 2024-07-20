@@ -28,6 +28,7 @@
 (declare-function helm-grep-split-line "helm-grep")
 (declare-function helm-grep-highlight-match "helm-grep")
 (declare-function helm-comp-read "helm-mode")
+(declare-function helm-grep-ag-1 "helm-grep")
 
 (defvar helm-current-error)
 
@@ -892,7 +893,7 @@ To use this bind it to a key in `isearch-mode-map'."
             helm-moccur-always-search-in-current))
     (helm-multi-occur-1 buf-list input)))
 
-(defun helm-occur-grep-in-parent-dir ()
+(defun helm-occur-grep-in-parent-dir-ag ()
   "Grep in the parent directory."
   (interactive)
   (let ((current-dir default-directory)
