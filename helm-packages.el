@@ -43,7 +43,7 @@
    (update :initform #'helm-packages--refresh-contents))
   "A class to define `helm-packages' sources.")
 
-(defcustom helm-packages-async nil
+(defcustom helm-packages-async t
   "Install packages async when non nil."
   :type 'boolean)
 
@@ -62,7 +62,7 @@
       (mapcar #'symbol-name mkd)
       (when (y-or-n-p (format "Upgrade %s packages? " (length mkd)))
         (if helm-packages-async
-            (async-package-do-action 'install mkd error-file)
+            (async-package-do-action 'upgrade mkd error-file)
           (mapc #'package-upgrade mkd))))))
 
 (defun helm-packages-describe (candidate)
@@ -209,9 +209,11 @@ Arg PACKAGES is a list of strings."
                               ;; Package name.
                               (propertize
                                c
-                               'face (if (equal status "dependency")
-                                         font-lock-type-face
-                                       'font-lock-keyword-face)
+                               'face
+                               (helm-acase status
+                                 ("dependency" 'font-lock-type-face)
+                                 ("disabled" 'default)
+                                 (t 'font-lock-keyword-face))
                                'match-part c)
                               ;; Separator.
                               (make-string (1+ (- (helm-in-buffer-get-longest-candidate)
@@ -220,9 +222,10 @@ Arg PACKAGES is a list of strings."
                               ;; Package status.
                               (propertize
                                (or status "")
-                               'face (if (equal status "dependency")
-                                         'bold-italic
-                                       'default))
+                               'face (helm-acase status
+                                       ("dependency" 'bold-italic)
+                                       ("disabled" 'font-lock-property-name-face)
+                                       (t 'default)))
                               ;; Separator.
                               (make-string (1+ (- 10 (length status))) ? )
                               ;; Package provider.
@@ -268,7 +271,10 @@ to avoid errors with outdated packages no more availables."
   (interactive "P")
   (package-initialize)
   (when arg (helm-packages--refresh-contents))
-  (let ((upgrades (package--upgradeable-packages))
+  (let ((upgrades (cl-loop for p in (package--upgradeable-packages)
+                           unless (helm-aand (assq p package-load-list)
+                                             (or (null (cadr it)) (stringp (cadr it))))
+                           collect p))
         (removables (package--removable-packages)))
     (helm :sources (list
                     (helm-make-source "Availables for upgrade" 'helm-packages-class
