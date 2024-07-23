@@ -900,7 +900,8 @@ To use this bind it to a key in `isearch-mode-map'."
     (helm-multi-occur-1 buf-list input)))
 
 (defun helm-occur-grep-in-parent-dir-ag ()
-  "Grep in the parent directory."
+  "Grep in the parent directory. If you were occuring multiple buffers
+before invoking this command, it will grep from the common directory."
   (interactive)
   (let* ((all-files (delq nil (mapcar (lambda (buf) (buffer-file-name buf)) helm-occur--buffers)))
          (parent-dir (when all-files (helm-common-dir all-files)))
