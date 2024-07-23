@@ -6006,7 +6006,7 @@ and `dired-compress-files-alist'."
   "Return the longest common directory path of FILES list"
   (cl-loop with base = (car files)
            for file in files
-           do (setq base (fill-common-string-prefix base file))
+           do (setq base (fill-common-string-prefix (or base "") file))
            finally return (when base (file-name-directory base))))
 
 (defun helm-ff--dired-compress-file (file)
