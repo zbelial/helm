@@ -29,6 +29,7 @@
 (declare-function helm-grep-highlight-match "helm-grep")
 (declare-function helm-comp-read "helm-mode")
 (declare-function helm-grep-ag-1 "helm-grep")
+(declare-function helm-common-dir "helm-files")
 
 (defvar helm-current-error)
 
@@ -47,6 +48,9 @@ Don't set it to any value, it will have no effect.")
   "The regexp matching candidates in helm-occur candidate buffer.")
 (defvar helm-occur-mode--last-pattern nil)
 (defvar helm-occur--initial-pos 0)
+(defvar helm-occur--buffers nil
+  "Used to help grep in parent directory in `helm-occur-grep-in-parent-dir-ag'.")
+
 
 (defvar helm-occur-map
   (let ((map (make-sparse-keymap)))
@@ -199,7 +203,7 @@ This happen only in `helm-source-occur' which is always related to
 
 ;;;###autoload
 (defun helm-occur ()
-    "Preconfigured helm for searching lines matching pattern in `current-buffer'.
+  "Preconfigured helm for searching lines matching pattern in `current-buffer'.
 
 When `helm-source-occur' is member of
 `helm-sources-using-default-as-input' which is the default,
@@ -217,6 +221,7 @@ engine beeing completely different and also much faster."
   (interactive)
   (setq helm-source-occur
         (car (helm-occur-build-sources (list (current-buffer)) "Helm occur")))
+  (setq helm-occur--buffers (list (current-buffer)))
   (helm-set-local-variable 'helm-occur--buffer-list (list (current-buffer))
                            'helm-occur--buffer-tick
                            (list (buffer-chars-modified-tick (current-buffer))))
@@ -246,16 +251,16 @@ engine beeing completely different and also much faster."
                         (helm-aif (thing-at-point 'symbol) (regexp-quote it)))))
           (narrow-to-region beg end)))
       (unwind-protect
-           (helm :sources 'helm-source-occur
-                 :buffer "*helm occur*"
-                 :history 'helm-occur-history
-                 :default (or def (helm-aif (thing-at-point 'symbol)
-                                      (regexp-quote it)))
-                 :preselect (and (memq 'helm-source-occur
-                                       helm-sources-using-default-as-input)
-                                 (format "^%d:" (line-number-at-pos
-                                                 (or pos (point)))))
-                 :truncate-lines helm-occur-truncate-lines)
+          (helm :sources 'helm-source-occur
+                :buffer "*helm occur*"
+                :history 'helm-occur-history
+                :default (or def (helm-aif (thing-at-point 'symbol)
+                                     (regexp-quote it)))
+                :preselect (and (memq 'helm-source-occur
+                                      helm-sources-using-default-as-input)
+                                (format "^%d:" (line-number-at-pos
+                                                (or pos (point)))))
+                :truncate-lines helm-occur-truncate-lines)
         (deactivate-mark t)
         (remove-hook 'helm-after-update-hook 'helm-occur--select-closest-candidate)))))
 
@@ -407,11 +412,11 @@ without having to delete its contents before."
                    (cons curbuf (remove curbuf buffers))
                  buffers))
          (helm-sources-using-default-as-input
-           (unless (cl-loop with total_size = 0
-                            for b in bufs
-                            do (setq total_size (buffer-size b))
-                            finally return (> total_size 2000000))
-             helm-sources-using-default-as-input))
+          (unless (cl-loop with total_size = 0
+                           for b in bufs
+                           do (setq total_size (buffer-size b))
+                           finally return (> total_size 2000000))
+            helm-sources-using-default-as-input))
          (sources (helm-occur-build-sources bufs (and (eql curbuf (car bufs))
                                                       (not (cdr bufs))
                                                       "Helm occur")))
@@ -423,6 +428,7 @@ without having to delete its contents before."
                              (cl-loop for b in bufs collect
                                       (buffer-chars-modified-tick
                                        (get-buffer b))))
+    (setq helm-occur--buffers bufs)
     (when (and helm-occur-always-search-in-current
                helm-occur-keep-closest-position)
       (setq helm-source-occur
@@ -896,11 +902,12 @@ To use this bind it to a key in `isearch-mode-map'."
 (defun helm-occur-grep-in-parent-dir-ag ()
   "Grep in the parent directory."
   (interactive)
-  (let ((current-dir default-directory)
-        (type nil)
-        (input helm-input))
-    (when current-dir
-      (helm-run-after-exit #'helm-grep-ag-1 current-dir type input))))
+  (let* ((all-files (delq nil (mapcar (lambda (buf) (buffer-file-name buf)) helm-occur--buffers)))
+         (parent-dir (when all-files (helm-common-dir all-files)))
+         (input helm-input))
+    (if parent-dir
+        (helm-run-after-exit #'helm-grep-ag-1 parent-dir nil input)
+      (message "No common parent directory to grep."))))
 
 (provide 'helm-occur)
 
