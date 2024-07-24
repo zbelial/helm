@@ -1907,7 +1907,7 @@ Take same args as `directory-files'."
            finally return (if (and others base)
                               (append (list (directory-file-name base))
                                       (helm-common-dir-1 others))
-                            (list (and base (directory-file-name base))))))
+                            (list (and base (if (file-directory-p base) (directory-file-name base) (file-name-directory base)))))))
 
 (defun helm-common-dir (files)
   "Return the longest common directory path of FILES list.

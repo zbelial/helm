@@ -29,7 +29,7 @@
 (declare-function helm-grep-highlight-match "helm-grep")
 (declare-function helm-comp-read "helm-mode")
 (declare-function helm-grep-ag-1 "helm-grep")
-(declare-function helm-common-dir "helm-files")
+(declare-function helm-common-dir "helm-lib")
 
 (defvar helm-current-error)
 
@@ -904,9 +904,9 @@ To use this bind it to a key in `isearch-mode-map'."
 before invoking this command, it will grep from the common directory."
   (interactive)
   (let* ((all-files (delq nil (mapcar (lambda (buf) (buffer-file-name buf)) helm-occur--buffers)))
-         (parent-dir (when all-files (helm-common-dir all-files)))
+         (parent-dir (helm-common-dir all-files))
          (input helm-input))
-    (if parent-dir
+    (if (and parent-dir (stringp parent-dir))
         (helm-run-after-exit #'helm-grep-ag-1 parent-dir nil input)
       (message "No common parent directory to grep."))))
 
