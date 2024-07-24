@@ -1284,8 +1284,12 @@ ACTION can be `rsync' or any action supported by `helm-dired-action'."
                          (length ifiles)
                          (if (memq action '(symlink relsymlink hardlink))
                              "from" "to")))
-         (cdir (and (eq action 'compress)
-                    (helm-common-dir ifiles)))
+         (cdir (helm-aand
+                (eq action 'compress)
+                (helm-common-dir ifiles)
+                (if (stringp it)
+                    (file-name-as-directory it)
+                  (error "Try to compress files not belonging to same drive"))))
          helm-ff--move-to-first-real-candidate
          helm-display-source-at-screen-top ; prevent setting window-start.
          helm-ff-auto-update-initial-value
@@ -6001,14 +6005,6 @@ and `dired-compress-files-alist'."
             (pop-to-buffer (find-file-noselect error-file))))))
      'helm-async-compress t)
     (helm-ff--compress-async-modeline-mode 1)))
-
-(defun helm-common-dir (files)
-  "Return the longest common directory path of FILES list"
-  (cl-loop with base = (car files)
-           for file in files
-           while base
-           do (setq base (fill-common-string-prefix base file))
-           finally return (when base (file-name-directory base))))
 
 (defun helm-ff--dired-compress-file (file)
   ;; `dired-compress-file' doesn't take care of binding `default-directory' when
