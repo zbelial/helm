@@ -48,8 +48,6 @@ Don't set it to any value, it will have no effect.")
   "The regexp matching candidates in helm-occur candidate buffer.")
 (defvar helm-occur-mode--last-pattern nil)
 (defvar helm-occur--initial-pos 0)
-(defvar helm-occur--buffers nil
-  "Used to help grep in parent directory in `helm-occur-grep-in-parent-dir-ag'.")
 
 
 (defvar helm-occur-map
@@ -58,6 +56,7 @@ Don't set it to any value, it will have no effect.")
     (define-key map (kbd "C-c o")    'helm-occur-run-goto-line-ow)
     (define-key map (kbd "C-c C-o")  'helm-occur-run-goto-line-of)
     (define-key map (kbd "C-x C-s")  'helm-occur-run-save-buffer)
+    (define-key map (kbd "C-s")      'helm-run-occur-grep-ag-buffer-directory)
     map)
   "Keymap used in occur source.")
 
@@ -69,8 +68,7 @@ Don't set it to any value, it will have no effect.")
   '(("Go to Line" . helm-occur-goto-line)
     ("Goto line other window (C-u vertically)" . helm-occur-goto-line-ow)
     ("Goto line new frame" . helm-occur-goto-line-of)
-    ("Save buffer" . helm-occur-save-results)
-    )
+    ("Save buffer" . helm-occur-save-results))
   "Actions for helm-occur."
   :type '(alist :key-type string :value-type function))
 
@@ -221,7 +219,6 @@ engine beeing completely different and also much faster."
   (interactive)
   (setq helm-source-occur
         (car (helm-occur-build-sources (list (current-buffer)) "Helm occur")))
-  (setq helm-occur--buffers (list (current-buffer)))
   (helm-set-local-variable 'helm-occur--buffer-list (list (current-buffer))
                            'helm-occur--buffer-tick
                            (list (buffer-chars-modified-tick (current-buffer))))
@@ -386,7 +383,10 @@ When GSHORTHANDS is nil use PATTERN unmodified."
                 ;; Needed for resume.
                 :history 'helm-occur-history
                 :candidate-number-limit helm-occur-candidate-number-limit
-                :action 'helm-occur-actions
+                :action (append helm-occur-actions
+                          `((,(format "%s grep buffer directory"
+                                      (upcase (helm-grep--ag-command)))
+                              . helm-occur-grep-ag-buffer-directory)))
                 :requires-pattern 2
                 :follow 1
                 :group 'helm-occur
@@ -428,7 +428,6 @@ without having to delete its contents before."
                              (cl-loop for b in bufs collect
                                       (buffer-chars-modified-tick
                                        (get-buffer b))))
-    (setq helm-occur--buffers bufs)
     (when (and helm-occur-always-search-in-current
                helm-occur-keep-closest-position)
       (setq helm-source-occur
@@ -530,6 +529,23 @@ persistent action."
                                  (buffer-file-name (get-buffer it)))))
     (when (and occur-fname (file-exists-p occur-fname))
       (expand-file-name occur-fname))))
+
+(defun helm-occur-grep-ag-buffer-directory (_candidate)
+  "Start helm-grep-ag in the `default-directory' of currently searched buffer."
+  (let* ((src (with-helm-buffer
+                ;; Search from current source or fallback to the first
+                ;; source if helm-buffer is empty, if only one source
+                ;; we are right in either cases.
+                (or (helm-get-current-source)
+                    (car helm-sources))))
+         (buf (helm-get-attr 'buffer-name src))
+         (directory (with-current-buffer buf
+                     default-directory))
+         (input helm-pattern))
+    (helm-grep-ag-1 directory nil input)))
+
+(helm-make-command-from-action helm-run-occur-grep-ag-buffer-directory
+    "Ag grep buffer directory." 'helm-occur-grep-ag-buffer-directory)
 
 ;;; helm-occur-mode
 ;;
@@ -898,17 +914,6 @@ To use this bind it to a key in `isearch-mode-map'."
               (not helm-moccur-always-search-in-current)
             helm-moccur-always-search-in-current))
     (helm-multi-occur-1 buf-list input)))
-
-(defun helm-occur-grep-in-parent-dir-ag ()
-  "Grep in the parent directory. If you were occuring multiple buffers
-before invoking this command, it will grep from the common directory."
-  (interactive)
-  (let* ((all-files (delq nil (mapcar (lambda (buf) (buffer-file-name buf)) helm-occur--buffers)))
-         (parent-dir (helm-common-dir all-files))
-         (input helm-input))
-    (if (and parent-dir (stringp parent-dir))
-        (helm-run-after-exit #'helm-grep-ag-1 parent-dir nil input)
-      (message "No common parent directory to grep."))))
 
 (provide 'helm-occur)
 
