@@ -403,53 +403,60 @@ the same time to variable and a function."
            collect (cons (concat c (helm-make-separator c) annot) c) into lst
            finally return (sort lst #'helm-generic-sort-fn)))
 
+;; FIXME rebind key after fill in this map
+(defvar helm--sym-short-doc-map (make-hash-table :test #'equal))
+
 ;;;###autoload
 (cl-defun helm-get-first-line-documentation (sym &optional
-                                                   (name "describe-function")
-                                                   (end-column 72))
+                                                 (name "describe-function")
+                                                 (end-column 72))
   "Return first line documentation of symbol SYM truncated at END-COLUMN.
 If SYM is not documented, return \"Not documented\".
 Argument NAME allows specifiying what function to use to display
 documentation when SYM name is the same for function and variable."
-  (let ((doc (condition-case _err
-                 (helm-acase sym
-                   ((guard (class-p it))
-                    (cl--class-docstring (cl--find-class it)))
-                   ((guard (and (fboundp it) (boundp it)))
-                    (if (string= name "describe-variable")
-                        (documentation-property it 'variable-documentation t)
-                      (documentation it t)))
-                   ((guard (custom-theme-p it))
-                    (documentation-property it 'theme-documentation t))
-                   ((guard (and (helm-group-p it) (not (fboundp it))))
-                    (documentation-property it 'group-documentation t))
-                   ((guard (fboundp it))
-                    (documentation it t))
-                   ((guard (boundp it))
-                    (documentation-property it 'variable-documentation t))
-                   ((guard (facep it)) (face-documentation it)))
-               (void-function "Void function -- Not documented"))))
-    (if (and doc (not (string= doc ""))
-             ;; `documentation' return "\n\n(args...)"
-             ;; for CL-style functions.
-             (not (string-match-p "\\`\n\n" doc)))
-        ;; Some commands specify key bindings or keymap in their first line,
-        ;; e.g.: "\<hexl-mode-map>A mode for editing binary [...].  As a result
-        ;; (substitute-command-keys doc) returns a string like "\nUses
-        ;; keymap...\nFirst line docstring.  See
-        ;; <https://debbugs.gnu.org/70163>.
-        (truncate-string-to-width
-         (helm-acase (split-string (substitute-command-keys doc) "\n")
-           ((guard (and (string= (car it) "") (cdr it)))
-            (cadr guard))
-           (t (car it)))
-         end-column nil nil t)
-      (if (or (symbol-function sym) (boundp sym) (facep sym) (helm-group-p sym))
-          "Not documented"
-        ;; Symbol exist but has no definition yet e.g.
-        ;; (advice-add 'foo-test :override (lambda () (message "invalid
-        ;; function"))) and foo-test is not already defined.
-        "Not already defined or loaded"))))
+  (let ((doc (gethash sym helm--sym-short-doc-map)))
+    (unless doc
+      (setq doc (condition-case _err
+                    (helm-acase sym
+                      ((guard (class-p it))
+                       (cl--class-docstring (cl--find-class it)))
+                      ((guard (and (fboundp it) (boundp it)))
+                       (if (string= name "describe-variable")
+                           (documentation-property it 'variable-documentation t)
+                         (documentation it t)))
+                      ((guard (custom-theme-p it))
+                       (documentation-property it 'theme-documentation t))
+                      ((guard (and (helm-group-p it) (not (fboundp it))))
+                       (documentation-property it 'group-documentation t))
+                      ((guard (fboundp it))
+                       (documentation it t))
+                      ((guard (boundp it))
+                       (documentation-property it 'variable-documentation t))
+                      ((guard (facep it)) (face-documentation it)))
+                  (void-function "Void function -- Not documented")))
+      (setq doc (if (and doc (not (string= doc ""))
+                         ;; `documentation' return "\n\n(args...)"
+                         ;; for CL-style functions.
+                         (not (string-match-p "\\`\n\n" doc)))
+                    ;; Some commands specify key bindings or keymap in their first line,
+                    ;; e.g.: "\<hexl-mode-map>A mode for editing binary [...].  As a result
+                    ;; (substitute-command-keys doc) returns a string like "\nUses
+                    ;; keymap...\nFirst line docstring.  See
+                    ;; <https://debbugs.gnu.org/70163>.
+                    (truncate-string-to-width
+                     (helm-acase (split-string (substitute-command-keys doc) "\n")
+                       ((guard (and (string= (car it) "") (cdr it)))
+                        (cadr guard))
+                       (t (car it)))
+                     end-column nil nil t)
+                  (if (or (symbol-function sym) (boundp sym) (facep sym) (helm-group-p sym))
+                      "Not documented"
+                    ;; Symbol exist but has no definition yet e.g.
+                    ;; (advice-add 'foo-test :override (lambda () (message "invalid
+                    ;; function"))) and foo-test is not already defined.
+                    "Not already defined or loaded")))
+      (puthash sym doc helm--sym-short-doc-map))
+    doc))
 
 ;;; File completion.
 ;;

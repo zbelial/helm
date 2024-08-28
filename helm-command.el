@@ -139,6 +139,8 @@ fuzzy matching is running its own sort function with a different
 algorithm."
   (with-helm-current-buffer
     (cl-loop with local-map = (helm-M-x-current-mode-map-alist)
+             with suffix = " [ON]"
+             with longest = (+ (length suffix) (helm-in-buffer-get-longest-candidate))
              for cand in candidates
              for local-key = (car (rassq cand local-map))
              for key = (substitute-command-keys (format "\\[%s]" cand))
@@ -160,7 +162,7 @@ algorithm."
                           (propertize
                            (format "%s%s%s %s"
                                    disp
-                                   (if doc (helm-make-separator cand) "")
+                                   (if doc (helm-make-separator disp longest) "")
                                    (if doc
                                        (propertize
                                         doc 'face 'helm-M-x-short-doc)
@@ -174,7 +176,7 @@ algorithm."
                           (propertize
                            (format "%s%s%s"
                                    disp
-                                   (if doc (helm-make-separator cand) "")
+                                   (if doc (helm-make-separator disp longest) "")
                                    (if doc
                                        (propertize
                                         doc 'face 'helm-M-x-short-doc)
@@ -183,7 +185,7 @@ algorithm."
                          (t (propertize
                              (format "%s%s%s %s"
                                      disp
-                                     (if doc (helm-make-separator cand) "")
+                                     (if doc (helm-make-separator disp longest) "")
                                      (if doc
                                          (propertize
                                           doc 'face 'helm-M-x-short-doc)
