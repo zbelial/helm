@@ -150,7 +150,7 @@ algorithm."
                                      (boundp sym)
                                      (buffer-local-value
                                       sym helm-current-buffer)))
-                            (propertize cand 'face 'helm-command-active-mode)
+                            (propertize (concat cand " [ON]") 'face 'helm-command-active-mode)
                           cand)
              unless (and (null ignore-props)
                          (or (get sym 'helm-only) (get sym 'no-helm-mx)
@@ -191,7 +191,7 @@ algorithm."
                                      (propertize
                                       " " 'display
                                       (propertize key 'face 'helm-M-x-key)))
-                                        'match-part disp)))
+                             'match-part disp)))
                    cand)
              into ls
              finally return
