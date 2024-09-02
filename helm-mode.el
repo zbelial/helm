@@ -1921,6 +1921,7 @@ See documentation of `completing-read' and `all-completions' for details."
        (fuzzy t)
        default
        marked-candidates
+       all-marked
        (candidate-number-limit helm-ff-candidate-number-limit)
        nomark
        (alistp t)
@@ -1957,7 +1958,10 @@ Keys description:
 
 - FUZZY: Enable fuzzy matching when non-nil (Enabled by default).
 
-- MARKED-CANDIDATES: When non--nil return a list of marked candidates.
+- MARKED-CANDIDATES: When non--nil return a list of marked candidates
+                     otherwise a single filename is returned.
+
+- ALL-MARKED: Allow marking several dummy candidates.
 
 - NOMARK: When non--nil don't allow marking candidates.
 
@@ -1982,7 +1986,8 @@ Keys description:
   (let* ((action-fn `(("Sole action (Identity)"
                        . (lambda (candidate)
                            (if ,marked-candidates
-                               (helm-marked-candidates :with-wildcard t)
+                               (helm-marked-candidates
+                                :with-wildcard t :all-sources ,all-marked)
                              (identity candidate))))))
          ;; Be sure we don't erase the underlying minibuffer if some.
          (helm-ff-auto-update-initial-value
@@ -2011,6 +2016,8 @@ Keys description:
             (helm-build-dummy-source "New file or directory"
               :keymap 'helm-read-file-map
               :must-match must-match
+              :all-marked all-marked
+              :nomark nomark
               :filtered-candidate-transformer
               (lambda (_candidates _source)
                 (unless (file-exists-p helm-pattern)
@@ -2051,17 +2058,13 @@ Keys description:
              :candidates
              (lambda ()
                (if test
-                   (append (and (not (file-exists-p helm-pattern))
-                                (not (helm-ff--invalid-tramp-name-p helm-pattern))
-                                (list (helm-ff-filter-candidate-one-by-one
-                                       helm-pattern nil t)))
-                           (cl-loop with hn = (helm-ff--tramp-hostnames)
-                                    ;; helm-find-files-get-candidates is
-                                    ;; returning a list of cons cells.
-                                    for (d . r) in (helm-find-files-get-candidates)
-                                    when (or (member r hn) ; A tramp host
-                                             (funcall test r)) ; Test ok
-                                    collect (cons d r)))
+                   (cl-loop with hn = (helm-ff--tramp-hostnames)
+                            ;; helm-find-files-get-candidates is
+                            ;; returning a list of cons cells.
+                            for (d . r) in (helm-find-files-get-candidates)
+                            when (or (member r hn)             ; A tramp host
+                                     (funcall test r))         ; Test ok
+                            collect (cons d r))
                  (helm-find-files-get-candidates)))
              :update (lambda ()
                        (remhash helm-ff-default-directory
@@ -2070,6 +2073,7 @@ Keys description:
              :filtered-candidate-transformer '(helm-ff-fct
                                                helm-ff-maybe-show-thumbnails
                                                helm-ff-sort-candidates)
+             :all-marked all-marked
              :persistent-action-if persistent-action-if
              :persistent-help persistent-help
              :volatile t
